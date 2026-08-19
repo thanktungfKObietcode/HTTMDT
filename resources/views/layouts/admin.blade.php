@@ -13,6 +13,8 @@
                 <a href="{{ route('admin.dashboard') }}" style="display:block; color:#fff; font-size:1.2rem; font-weight:700; margin-bottom:30px;">Silver Atelier Admin</a>
                 <nav aria-label="Admin navigation" style="display:grid; gap:8px;">
                     <a href="{{ route('admin.dashboard') }}" style="padding:10px 12px; border-radius:8px; background:rgba(255,255,255,.12); color:#fff;">Dashboard</a>
+                    <a href="{{ route('admin.orders.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Đơn hàng</a>
+                    <a href="{{ route('admin.users.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Người dùng</a>
                     <a href="{{ route('admin.products.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Sản phẩm</a>
                     <a href="{{ route('admin.categories.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Danh mục</a>
                     <a href="{{ route('admin.collections.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Bộ sưu tập</a>

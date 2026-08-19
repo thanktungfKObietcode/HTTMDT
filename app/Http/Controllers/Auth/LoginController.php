@@ -28,6 +28,7 @@ class LoginController extends Controller
         $credentials = [
             'email' => $validated['email'],
             'password' => $validated['password'],
+            'is_active' => true,
         ];
 
         if (Auth::attempt($credentials, $validated['remember'] ?? false)) {
