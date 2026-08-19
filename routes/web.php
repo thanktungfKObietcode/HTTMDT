@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\ProductController;
 use App\Models\Category;
+use App\Models\Banner;
+use App\Models\BlogPost;
 use App\Models\Product;
 use Illuminate\Support\Facades\Route;
 
@@ -20,12 +22,33 @@ Route::get('/', function () {
         ->limit(4)
         ->get();
 
+    $journalPosts = BlogPost::with('category')
+        ->where('is_published', true)
+        ->latest()
+        ->limit(3)
+        ->get();
+
+    $banners = Banner::where('is_active', true)
+        ->where('position', 'home')
+        ->latest()
+        ->get();
+
     return view('storefront.home', [
         'pageTitle' => 'Silver Atelier | Trang sức bạc',
         'categories' => $categories,
         'featuredProducts' => $featuredProducts,
+        'journalPosts' => $journalPosts,
+        'banners' => $banners,
     ]);
 })->name('home');
+
+    Route::get('/tin-tuc', [\App\Http\Controllers\StorefrontContentController::class, 'blogIndex'])->name('blog.index');
+    Route::get('/tin-tuc/{slug}', [\App\Http\Controllers\StorefrontContentController::class, 'blogShow'])->name('blog.show');
+    Route::get('/lien-he', [\App\Http\Controllers\StorefrontContentController::class, 'contact'])->name('contact');
+    Route::post('/lien-he', [\App\Http\Controllers\StorefrontContentController::class, 'submitContact'])->name('contact.store');
+    Route::post('/dang-ky-nhan-tin', [\App\Http\Controllers\StorefrontContentController::class, 'subscribe'])->name('newsletter.subscribe');
+    Route::get('/showroom', [\App\Http\Controllers\StorefrontContentController::class, 'showrooms'])->name('showrooms');
+    Route::get('/chinh-sach/{policy}', [\App\Http\Controllers\StorefrontContentController::class, 'policy'])->name('policy.show');
 
 Route::get('/san-pham', [ProductController::class, 'index'])->name('products.index');
 Route::get('/san-pham/{slug}', [ProductController::class, 'show'])->name('product.show');

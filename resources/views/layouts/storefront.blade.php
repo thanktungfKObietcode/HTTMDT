@@ -9,6 +9,9 @@
         <script src="{{ asset('js/app.js') }}" defer></script>
     </head>
     <body>
+        @php
+            $footerSettings = \App\Models\Setting::whereIn('key', ['app_email', 'app_phone'])->pluck('value', 'key');
+        @endphp
         <header class="site-header">
             <div class="container header-inner">
                 <a href="{{ url('/') }}" class="brand" aria-label="Silver Atelier home">
@@ -22,9 +25,9 @@
                 <nav class="main-nav" aria-label="Main navigation">
                     <a href="{{ url('/') }}">Trang chủ</a>
                     <a href="{{ url('/san-pham') }}">Sản phẩm</a>
-                    <a href="#collection">Bộ sưu tập</a>
-                    <a href="#story">Câu chuyện</a>
-                    <a href="#journal">Tin tức</a>
+                    <a href="{{ route('home') }}#collection">Bộ sưu tập</a>
+                    <a href="{{ route('home') }}#story">Câu chuyện</a>
+                    <a href="{{ route('blog.index') }}">Tin tức</a>
                 </nav>
 
                 <div class="header-tools">
@@ -91,21 +94,35 @@
                 <div>
                     <h3>Hỗ trợ</h3>
                     <ul>
-                        <li><a href="#">Chính sách đổi trả</a></li>
-                        <li><a href="#">Vận chuyển</a></li>
-                        <li><a href="#">Bảo hành</a></li>
-                        <li><a href="#">Liên hệ</a></li>
+                        <li><a href="{{ route('policy.show', 'returns') }}">Chính sách đổi trả</a></li>
+                        <li><a href="{{ route('policy.show', 'shipping') }}">Vận chuyển</a></li>
+                        <li><a href="{{ route('policy.show', 'warranty') }}">Bảo hành</a></li>
+                        <li><a href="{{ route('contact') }}">Liên hệ</a></li>
+                        <li><a href="{{ route('showrooms') }}">Showroom</a></li>
                     </ul>
                 </div>
 
                 <div>
                     <h3>Liên hệ</h3>
                     <ul>
-                        <li>Hotline: 1900 1234</li>
-                        <li>Email: hello@silveratelier.vn</li>
-                        <li>Showroom: 18 Trần Hưng Đạo, Hà Nội</li>
+                        <li>Hotline: {{ $footerSettings['app_phone'] ?? 'Chưa cập nhật' }}</li>
+                        <li>Email: {{ $footerSettings['app_email'] ?? 'Chưa cập nhật' }}</li>
+                        <li><a href="{{ route('showrooms') }}">Xem địa chỉ showroom</a></li>
                     </ul>
                 </div>
+            </div>
+
+            <div class="container" style="margin-top:28px; padding-top:22px; border-top:1px solid var(--line);">
+                <form method="POST" action="{{ route('newsletter.subscribe') }}" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
+                    @csrf
+                    <div style="flex:1; min-width:220px;">
+                        <label for="newsletter-email" style="display:block; margin-bottom:6px; font-weight:600;">Nhận tin mới</label>
+                        <input id="newsletter-email" type="email" name="email" value="{{ old('email') }}" placeholder="Email của bạn" required style="width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:8px;">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Đăng ký</button>
+                </form>
+                @if (session('newsletter_success'))<small style="display:block; margin-top:8px; color:#23613a;">{{ session('newsletter_success') }}</small>@endif
+                @error('email')<small style="display:block; margin-top:8px; color:#c62828;">{{ $message }}</small>@enderror
             </div>
 
             <div class="container footer-bottom">

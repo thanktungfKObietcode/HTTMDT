@@ -1,6 +1,10 @@
 @extends('layouts.storefront')
 
 @section('content')
+    @php
+        $homeBanner = $banners->first();
+    @endphp
+
     <section class="hero-section">
         <div class="container hero-grid">
             <div class="hero-copy">
@@ -20,7 +24,13 @@
 
             <div class="hero-visual">
                 <div class="hero-card hero-card-main">
-                    <img src="https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=900&q=80" alt="Jewelry collection">
+                    @if ($homeBanner?->link)
+                        <a href="{{ $homeBanner->link }}">
+                    @endif
+                    <img src="{{ $homeBanner?->image ?? 'https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=900&q=80' }}" alt="{{ $homeBanner?->title ?? 'Jewelry collection' }}">
+                    @if ($homeBanner?->link)
+                        </a>
+                    @endif
                     <div class="floating-note note-top">
                         <span>Silver 925</span>
                         <strong>New Arrival</strong>
@@ -163,30 +173,22 @@
         </div>
 
         <div class="container journal-grid">
-            <article class="journal-card">
-                <img src="https://images.unsplash.com/photo-1573408301185-9146fe634ad0?auto=format&fit=crop&w=900&q=80" alt="Jewelry trend article">
-                <div>
-                    <span>Style guide</span>
-                    <h3>5 cách phối phụ kiện bạc cho dịp lễ sang trọng</h3>
-                    <a href="#">Đọc thêm</a>
+            @forelse ($journalPosts as $post)
+                <article class="journal-card">
+                    @if ($post->featured_image)
+                        <img src="{{ $post->featured_image }}" alt="{{ $post->title }}">
+                    @endif
+                    <div>
+                        <span>{{ $post->category?->name ?? 'Tin tức' }}</span>
+                        <h3>{{ $post->title }}</h3>
+                        <a href="{{ route('blog.show', $post->slug) }}">Đọc thêm</a>
+                    </div>
+                </article>
+            @empty
+                <div class="filter-box" style="grid-column:1 / -1;">
+                    <p style="margin:0;">Chưa có bài viết mới.</p>
                 </div>
-            </article>
-            <article class="journal-card">
-                <img src="https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=900&q=80" alt="Crafting jewelry article">
-                <div>
-                    <span>Craft</span>
-                    <h3>Quy trình chế tác trang sức bạc 925 theo tiêu chuẩn cao</h3>
-                    <a href="#">Đọc thêm</a>
-                </div>
-            </article>
-            <article class="journal-card">
-                <img src="https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=80" alt="Gift idea article">
-                <div>
-                    <span>Gift guide</span>
-                    <h3>Những món quà bạc ý nghĩa cho ngày đặc biệt</h3>
-                    <a href="#">Đọc thêm</a>
-                </div>
-            </article>
+            @endforelse
         </div>
     </section>
 @endsection
