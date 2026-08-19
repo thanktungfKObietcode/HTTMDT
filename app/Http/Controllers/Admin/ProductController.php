@@ -1,0 +1,131 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Models\Category;
+use App\Models\Collection;
+use App\Models\Material;
+use App\Models\OrderItem;
+use App\Models\Product;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+use Illuminate\View\View;
+
+class ProductController extends Controller
+{
+    public function index(Request $request): View
+    {
+        $products = Product::with(['category', 'material'])
+            ->when($request->filled('q'), function ($query) use ($request) {
+                $term = trim($request->string('q')->toString());
+                $query->where(function ($builder) use ($term) {
+                    $builder->where('name', 'like', "%{$term}%")
+                        ->orWhere('sku', 'like', "%{$term}%")
+                        ->orWhere('slug', 'like', "%{$term}%");
+                });
+            })
+            ->when($request->filled('category_id'), fn ($query) => $query->where('category_id', $request->integer('category_id')))
+            ->when($request->filled('status'), fn ($query) => $query->where('is_active', $request->input('status') === 'active'))
+            ->latest()
+            ->paginate(15)
+            ->appends($request->query());
+
+        return view('admin.products.index', [
+            'pageTitle' => 'Quản lý sản phẩm',
+            'products' => $products,
+            'categories' => Category::where('is_active', true)->orderBy('name')->get(),
+        ]);
+    }
+
+    public function create(): View
+    {
+        return view('admin.products.create', array_merge($this->formData(), ['product' => null]));
+    }
+
+    public function store(Request $request): RedirectResponse
+    {
+        $validated = $this->validatedProduct($request);
+
+        DB::transaction(function () use ($validated, $request): void {
+            $product = Product::create($this->productAttributes($validated));
+            $product->collections()->sync($request->input('collection_ids', []));
+        });
+
+        return redirect()->route('admin.products.index')->with('success', 'Sản phẩm đã được tạo.');
+    }
+
+    public function edit(Product $product): View
+    {
+        return view('admin.products.edit', array_merge($this->formData(), [
+            'product' => $product->load('collections'),
+        ]));
+    }
+
+    public function update(Request $request, Product $product): RedirectResponse
+    {
+        $validated = $this->validatedProduct($request, $product);
+
+        DB::transaction(function () use ($validated, $request, $product): void {
+            $product->update($this->productAttributes($validated));
+            $product->collections()->sync($request->input('collection_ids', []));
+        });
+
+        return redirect()->route('admin.products.index')->with('success', 'Sản phẩm đã được cập nhật.');
+    }
+
+    public function destroy(Product $product): RedirectResponse
+    {
+        if (OrderItem::where('product_id', $product->id)->exists()) {
+            $product->update(['is_active' => false]);
+
+            return redirect()->route('admin.products.index')->with('success', 'Sản phẩm đã được ngừng bán để bảo toàn lịch sử đơn hàng.');
+        }
+
+        $product->delete();
+
+        return redirect()->route('admin.products.index')->with('success', 'Sản phẩm đã được xóa.');
+    }
+
+    private function formData(): array
+    {
+        return [
+            'pageTitle' => 'Sản phẩm',
+            'categories' => Category::where('is_active', true)->orderBy('name')->get(),
+            'materials' => Material::where('is_active', true)->orderBy('name')->get(),
+            'collections' => Collection::where('is_active', true)->orderBy('name')->get(),
+        ];
+    }
+
+    private function validatedProduct(Request $request, ?Product $product = null): array
+    {
+        return $request->validate([
+            'name' => 'required|string|max:255',
+            'slug' => ['required', 'string', 'max:255', Rule::unique('products', 'slug')->ignore($product?->id)],
+            'sku' => ['required', 'string', 'max:255', Rule::unique('products', 'sku')->ignore($product?->id)],
+            'category_id' => 'nullable|exists:categories,id',
+            'material_id' => 'nullable|exists:materials,id',
+            'short_description' => 'nullable|string',
+            'description' => 'nullable|string',
+            'price' => 'required|numeric|min:0',
+            'sale_price' => 'nullable|numeric|min:0|lte:price',
+            'featured_image' => 'nullable|string|max:255',
+            'stock' => 'required|integer|min:0',
+            'featured' => 'nullable|boolean',
+            'is_active' => 'nullable|boolean',
+            'collection_ids' => 'nullable|array',
+            'collection_ids.*' => 'integer|exists:collections,id',
+        ]);
+    }
+
+    private function productAttributes(array $validated): array
+    {
+        $validated['featured'] = (bool) ($validated['featured'] ?? false);
+        $validated['is_active'] = (bool) ($validated['is_active'] ?? false);
+        unset($validated['collection_ids']);
+
+        return $validated;
+    }
+}
