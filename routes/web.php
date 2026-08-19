@@ -29,6 +29,9 @@ Route::get('/', function () {
 
 Route::get('/san-pham', [ProductController::class, 'index'])->name('products.index');
 Route::get('/san-pham/{slug}', [ProductController::class, 'show'])->name('product.show');
+Route::post('/san-pham/{product}/danh-gia', [\App\Http\Controllers\ReviewController::class, 'store'])
+    ->name('product.reviews.store')
+    ->middleware('auth');
 
 Route::get('/gio-hang', [\App\Http\Controllers\CartController::class, 'index'])->name('cart.index');
 Route::post('/gio-hang/them', [\App\Http\Controllers\CartController::class, 'add'])->name('cart.add');

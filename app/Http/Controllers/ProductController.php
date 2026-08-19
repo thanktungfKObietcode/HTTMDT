@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\Category;
 use App\Models\Collection;
 use App\Models\Material;
+use App\Models\Order;
 use App\Models\Product;
+use App\Models\ProductReview;
 use Illuminate\Http\Request;
 
 class ProductController extends Controller
@@ -113,6 +115,18 @@ class ProductController extends Controller
             ->get();
 
         $averageRating = $product->reviews()->where('is_active', true)->avg('rating');
+        $existingReview = auth()->check()
+            ? ProductReview::where('product_id', $product->id)
+                ->where('user_id', auth()->id())
+                ->first()
+            : null;
+        $canReview = auth()->check()
+            ? Order::query()
+                ->where('user_id', auth()->id())
+                ->where('status', 'delivered')
+                ->whereHas('items', fn ($query) => $query->where('product_id', $product->id))
+                ->exists()
+            : false;
 
         return view('storefront.product', [
             'pageTitle' => $product->name . ' | Silver Atelier',
@@ -123,6 +137,8 @@ class ProductController extends Controller
             'specifications' => $product->specifications()->get(),
             'variants' => $product->variants()->where('is_active', true)->get(),
             'images' => $product->images()->orderBy('sort_order')->get(),
+            'canReview' => $canReview,
+            'existingReview' => $existingReview,
         ]);
     }
 }

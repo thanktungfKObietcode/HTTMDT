@@ -150,11 +150,55 @@
         <div class="container section-heading">
             <div>
                 <span class="eyebrow">Đánh giá khách hàng</span>
-                <h2>Khám phá thêm</h2>
+                <h2>Đánh giá sản phẩm</h2>
             </div>
         </div>
 
         <div class="container" style="display:grid; gap:18px;">
+            @if (session('success'))
+                <div class="filter-box" style="padding:14px 18px; background:#eaf7ef; color:#23613a;">
+                    {{ session('success') }}
+                </div>
+            @endif
+
+            @if ($errors->has('review'))
+                <div class="filter-box" style="padding:14px 18px; background:#ffe8e8; color:#8a1f1f;">
+                    {{ $errors->first('review') }}
+                </div>
+            @endif
+
+            @if (! auth()->check())
+                <div class="filter-box">
+                    <p style="margin:0;">Đăng nhập để xem quyền đánh giá sản phẩm.</p>
+                    <a href="{{ route('login') }}" class="btn btn-secondary" style="margin-top:12px;">Đăng nhập</a>
+                </div>
+            @elseif ($existingReview)
+                <div class="filter-box">
+                    <p style="margin:0;">Bạn đã đánh giá sản phẩm này.</p>
+                </div>
+            @elseif ($canReview)
+                <form method="POST" action="{{ route('product.reviews.store', $product) }}" class="filter-box" style="display:grid; gap:12px;">
+                    @csrf
+                    <h3 style="margin:0;">Viết đánh giá của bạn</h3>
+                    <label for="review-rating" style="font-weight:600;">Số sao</label>
+                    <select id="review-rating" name="rating" required style="max-width:180px; padding:10px 12px; border:1px solid rgba(31,28,26,0.12); border-radius:8px;">
+                        <option value="">Chọn số sao</option>
+                        @for ($rating = 5; $rating >= 1; $rating--)
+                            <option value="{{ $rating }}" {{ (string) old('rating') === (string) $rating ? 'selected' : '' }}>{{ $rating }}/5</option>
+                        @endfor
+                    </select>
+                    @error('rating')<small style="color:#c62828;">{{ $message }}</small>@enderror
+                    <label for="review-comment" style="font-weight:600;">Nội dung</label>
+                    <textarea id="review-comment" name="comment" maxlength="2000" rows="4" placeholder="Chia sẻ trải nghiệm của bạn..." style="width:100%; padding:10px 12px; border:1px solid rgba(31,28,26,0.12); border-radius:8px; font-family:inherit;">{{ old('comment') }}</textarea>
+                    @error('comment')<small style="color:#c62828;">{{ $message }}</small>@enderror
+                    <button type="submit" class="btn btn-primary" style="width:max-content;">Gửi đánh giá</button>
+                </form>
+            @else
+                <div class="filter-box">
+                    <p style="margin:0;">Bạn cần nhận hàng thành công trước khi đánh giá sản phẩm.</p>
+                </div>
+            @endif
+
             @forelse ($reviews as $review)
                 <article class="filter-box" style="padding:18px 20px;">
                     <div class="rating-row" style="margin-bottom:8px;">
@@ -163,6 +207,12 @@
                     </div>
                     <p style="margin:0 0 6px; font-weight:600;">{{ $review->user->name ?? 'Khách hàng' }}</p>
                     <p style="margin:0; color:#6c625d;">{{ $review->comment }}</p>
+                    <small style="display:block; margin-top:8px; color:#6c625d;">
+                        {{ $review->created_at->format('d/m/Y H:i') }}
+                        @if ($review->is_verified_purchase)
+                            • Đã mua hàng
+                        @endif
+                    </small>
                 </article>
             @empty
                 <div class="filter-box">

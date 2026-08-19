@@ -78,6 +78,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Product reviews written by the user.
+     */
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(ProductReview::class);
+    }
+
+    /**
      * Coupon usage history.
      */
     public function couponUsages(): HasMany
