@@ -18,7 +18,7 @@ use Illuminate\View\View;
 
 class CheckoutController extends Controller
 {
-    public function index(): View|RedirectResponse
+    public function index(Request $request): View|RedirectResponse
     {
         $cart = $this->currentCart();
 
@@ -28,13 +28,31 @@ class CheckoutController extends Controller
 
         $items = $cart->items()->with(['product', 'productVariant'])->get();
         $subtotal = $items->sum(fn ($item) => (int) $item->quantity * (float) ($item->unit_price ?: ($item->product?->sale_price ?: $item->product?->price ?: 0)));
+        $shippingMethods = ShippingMethod::where('is_active', true)->get();
+        $selectedShippingMethodId = (int) old('shipping_method_id', $shippingMethods->first()?->id);
+        $selectedShippingMethod = $shippingMethods->firstWhere('id', $selectedShippingMethodId) ?: $shippingMethods->first();
+        $couponCode = trim((string) $request->input('coupon_code', old('coupon_code', '')));
+        $couponDiscount = 0.0;
+        $couponError = null;
+
+        if ($couponCode !== '') {
+            try {
+                [, $couponDiscount] = $this->resolveCoupon($couponCode, $subtotal);
+            } catch (\Throwable $exception) {
+                $couponError = $exception->getMessage();
+            }
+        }
 
         return view('storefront.checkout', [
             'pageTitle' => 'Thanh toán | Silver Atelier',
             'cart' => $cart,
             'items' => $items,
             'subtotal' => $subtotal,
-            'shippingMethods' => ShippingMethod::where('is_active', true)->get(),
+            'shippingMethods' => $shippingMethods,
+            'selectedShippingMethod' => $selectedShippingMethod,
+            'couponCode' => $couponCode,
+            'couponDiscount' => $couponDiscount,
+            'couponError' => $couponError,
             'savedAddresses' => auth()->user()?->addresses()->where('is_active', true)->get() ?? collect(),
             'defaultAddress' => auth()->user()?->addresses()->where('is_default', true)->where('is_active', true)->first(),
             'user' => auth()->user(),

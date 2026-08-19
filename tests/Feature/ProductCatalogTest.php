@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Category;
 use App\Models\Material;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -97,10 +98,23 @@ class ProductCatalogTest extends TestCase
             'average_rating' => 4,
         ]);
 
+        $variant = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'DC-925-001-S',
+            'size' => 'S',
+            'price' => 1390000,
+            'stock' => 5,
+            'is_active' => true,
+        ]);
+
         $response = $this->get('/san-pham/' . $product->slug);
 
         $response->assertStatus(200);
         $response->assertSee('Dây chuyền bạc 925');
         $response->assertSee('Bạc 925');
+        $response->assertSee('name="product_id"', false);
+        $response->assertSee('name="product_variant_id"', false);
+        $response->assertSee('value="' . $variant->id . '"', false);
+        $response->assertSee('action="' . route('cart.add') . '"', false);
     }
 }

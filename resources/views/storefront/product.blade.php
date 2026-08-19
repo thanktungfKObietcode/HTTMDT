@@ -11,6 +11,21 @@
 
     <section class="section-block product-detail">
         <div class="container product-detail-grid">
+            @if ($errors->any() || session('error'))
+                <div style="grid-column:1 / -1; padding:12px 14px; border-radius:8px; background:#ffe8e8; color:#8a1f1f;">
+                    @if (session('error'))
+                        <p style="margin:0;">{{ session('error') }}</p>
+                    @endif
+                    @if ($errors->any())
+                        <ul style="margin:0; padding-left:18px;">
+                            @foreach ($errors->all() as $error)
+                                <li>{{ $error }}</li>
+                            @endforeach
+                        </ul>
+                    @endif
+                </div>
+            @endif
+
             <div class="gallery-panel">
                 <div class="main-gallery">
                     <img src="{{ $detailImage }}" alt="{{ $product->name }}">
@@ -55,14 +70,23 @@
                         <span class="label">Phiên bản</span>
                         <div class="option-pills">
                             @foreach ($variants as $variant)
-                                <button type="button" class="{{ $loop->first ? 'active' : '' }}">{{ $variant->size ?? $variant->color ?? $variant->metal_type ?? 'Phiên bản ' . $loop->iteration }}</button>
+                                <label class="option-pill">
+                                    <input type="radio" name="product_variant_id" value="{{ $variant->id }}" form="add-to-cart-form" {{ $loop->first ? 'checked' : '' }} required>
+                                    <span>{{ $variant->size ?? $variant->color ?? $variant->metal_type ?? 'Phiên bản ' . $loop->iteration }}</span>
+                                </label>
                             @endforeach
                         </div>
                     </div>
                 @endif
 
                 <div class="purchase-actions">
-                    <button type="button" class="btn btn-primary large">Thêm vào giỏ hàng</button>
+                    <form id="add-to-cart-form" method="POST" action="{{ route('cart.add') }}" style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                        @csrf
+                        <input type="hidden" name="product_id" value="{{ $product->id }}">
+                        <label for="quantity" class="sr-only">Số lượng</label>
+                        <input id="quantity" type="number" name="quantity" value="1" min="1" max="{{ $variants->isNotEmpty() ? $variants->max('stock') : $product->stock }}" required style="width:72px; padding:12px; border:1px solid rgba(31,28,26,0.12); border-radius:8px;">
+                        <button type="submit" class="btn btn-primary large">Thêm vào giỏ hàng</button>
+                    </form>
                     @if (auth()->check())
                         @php
                             $inWishlist = auth()->user()->wishlist()->where('product_id', $product->id)->exists();
@@ -81,7 +105,7 @@
                             </form>
                         @endif
                     @else
-                        <button type="button" class="btn btn-secondary large" onclick="loginPrompt()">♡ Yêu thích</button>
+                        <a href="{{ route('login') }}" class="btn btn-secondary large">♡ Yêu thích</a>
                     @endif
                 </div>
 
@@ -167,7 +191,26 @@
                 <article class="product-card">
                     <div class="product-media">
                         <img src="{{ $relatedImage }}" alt="{{ $relatedProduct->name }}">
-                        <button class="wishlist-btn" type="button" aria-label="Add to wishlist">♡</button>
+                        @if (auth()->check())
+                            @php
+                                $relatedInWishlist = auth()->user()->wishlist()->where('product_id', $relatedProduct->id)->exists();
+                            @endphp
+                            @if ($relatedInWishlist)
+                                <form method="POST" action="{{ route('wishlist.remove', $relatedProduct->id) }}" style="display:inline;">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="wishlist-btn active" aria-label="Remove from wishlist" title="Xóa khỏi yêu thích">♥</button>
+                                </form>
+                            @else
+                                <form method="POST" action="{{ route('wishlist.add') }}" style="display:inline;">
+                                    @csrf
+                                    <input type="hidden" name="product_id" value="{{ $relatedProduct->id }}">
+                                    <button type="submit" class="wishlist-btn" aria-label="Add to wishlist" title="Thêm vào yêu thích">♡</button>
+                                </form>
+                            @endif
+                        @else
+                            <a href="{{ route('login') }}" class="wishlist-btn" aria-label="Add to wishlist" title="Đăng nhập để thêm vào yêu thích">♡</a>
+                        @endif
                     </div>
                     <div class="product-info">
                         <span class="product-category">{{ $relatedProduct->category->name ?? 'Trang sức bạc' }}</span>

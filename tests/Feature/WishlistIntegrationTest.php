@@ -218,4 +218,28 @@ class WishlistIntegrationTest extends TestCase
 
         $response->assertJson(['in_wishlist' => true]);
     }
+
+    public function test_guest_product_detail_wishlist_links_to_login(): void
+    {
+        $response = $this->get(route('product.show', $this->product->slug));
+
+        $response->assertOk();
+        $response->assertSee('href="' . route('login') . '"', false);
+    }
+
+    public function test_authenticated_product_detail_wishlist_renders_add_and_remove_actions(): void
+    {
+        $this->actingAs($this->user);
+
+        $addResponse = $this->get(route('product.show', $this->product->slug));
+        $addResponse->assertSee('action="' . route('wishlist.add') . '"', false);
+
+        Wishlist::create([
+            'user_id' => $this->user->id,
+            'product_id' => $this->product->id,
+        ]);
+
+        $removeResponse = $this->get(route('product.show', $this->product->slug));
+        $removeResponse->assertSee('action="' . route('wishlist.remove', $this->product->id) . '"', false);
+    }
 }

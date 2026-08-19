@@ -28,10 +28,11 @@
                 </nav>
 
                 <div class="header-tools">
-                    <label class="search-box" aria-label="Search products">
+                    <form class="search-box" method="GET" action="{{ route('products.index') }}" role="search">
+                        <label for="header-search" class="sr-only">Tìm kiếm sản phẩm</label>
                         <span>⌕</span>
-                        <input type="search" placeholder="Tìm kiếm..." aria-label="Search">
-                    </label>
+                        <input id="header-search" type="search" name="q" value="{{ request('q') }}" placeholder="Tìm kiếm..." aria-label="Search">
+                    </form>
                     <a href="{{ route('wishlist.index') }}" class="icon-link" aria-label="Wishlist">♡</a>
                     <a href="{{ route('cart.index') }}" class="icon-link" aria-label="Cart">🛍</a>
                     @auth

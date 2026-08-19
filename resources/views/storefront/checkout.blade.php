@@ -88,7 +88,7 @@
                     <div style="display:grid; gap:12px;">
                         @foreach($shippingMethods as $method)
                             <label style="display:flex; gap:10px; align-items:flex-start; border:1px solid rgba(31,28,26,0.1); border-radius:8px; padding:10px;">
-                                <input type="radio" name="shipping_method_id" value="{{ $method->id }}" {{ old('shipping_method_id', $loop->first ? $method->id : null) == $method->id ? 'checked' : '' }}>
+                                <input type="radio" name="shipping_method_id" value="{{ $method->id }}" data-fee="{{ $method->base_fee }}" {{ old('shipping_method_id', $loop->first ? $method->id : null) == $method->id ? 'checked' : '' }}>
                                 <span>
                                     <strong>{{ $method->name }}</strong> - {{ number_format((float) $method->base_fee, 0, ',', '.') }}đ<br>
                                     <small>{{ $method->description }}</small>
@@ -103,7 +103,16 @@
 
                     <div style="margin-top:12px; display:grid; gap:8px;">
                         <label for="coupon_code" style="font-weight:600;">Mã giảm giá</label>
-                        <input id="coupon_code" name="coupon_code" value="{{ old('coupon_code') }}" placeholder="Nhập mã nếu có" style="width:100%; padding:10px 12px; border:1px solid rgba(31,28,26,0.12); border-radius:8px;">
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <input id="coupon_code" name="coupon_code" value="{{ $couponCode }}" placeholder="Nhập mã nếu có" style="flex:1; min-width:180px; padding:10px 12px; border:1px solid rgba(31,28,26,0.12); border-radius:8px;">
+                            <button type="button" id="apply-coupon" class="btn btn-secondary" data-action="{{ route('checkout.index') }}">Áp dụng</button>
+                        </div>
+                        @if ($couponError)
+                            <small style="color:#c62828;">{{ $couponError }}</small>
+                        @elseif ($couponCode !== '')
+                            <small style="color:#2e7d32;">Mã giảm giá hợp lệ.</small>
+                        @endif
+                        <input type="hidden" name="coupon_code" value="{{ $couponCode }}">
                     </div>
 
                     <div style="margin-top:12px; display:grid; gap:8px;">
@@ -117,7 +126,7 @@
                 <button type="submit" class="btn btn-primary" style="width:100%;">Đặt hàng</button>
             </form>
 
-            <aside class="filter-box" style="display:grid; gap:16px; position:sticky; top:20px;">
+            <aside class="filter-box" data-subtotal="{{ $subtotal }}" data-discount="{{ $couponDiscount }}" style="display:grid; gap:16px; position:sticky; top:20px;">
                 <h3 style="margin:0;">Tóm tắt đơn hàng</h3>
                 <div style="display:grid; gap:12px;">
                     @foreach($items as $item)
@@ -144,9 +153,9 @@
 
                 <div style="display:grid; gap:6px;">
                     <div style="display:flex; justify-content:space-between;"><span>Tạm tính</span><strong>{{ number_format($subtotal, 0, ',', '.') }}đ</strong></div>
-                    <div style="display:flex; justify-content:space-between;"><span>Phí vận chuyển</span><span>Chọn bên trái</span></div>
-                    <div style="display:flex; justify-content:space-between;"><span>Giảm giá</span><span>Tính khi đặt hàng</span></div>
-                    <div style="display:flex; justify-content:space-between; border-top:1px solid rgba(31,28,26,0.1); padding-top:8px;"><span>Tổng thanh toán</span><strong>Tính khi đặt hàng</strong></div>
+                    <div style="display:flex; justify-content:space-between;"><span>Phí vận chuyển</span><strong id="checkout-shipping-fee">{{ number_format((float) ($selectedShippingMethod?->base_fee ?? 0), 0, ',', '.') }}đ</strong></div>
+                    <div style="display:flex; justify-content:space-between;"><span>Giảm giá</span><strong id="checkout-discount">-{{ number_format((float) $couponDiscount, 0, ',', '.') }}đ</strong></div>
+                    <div style="display:flex; justify-content:space-between; border-top:1px solid rgba(31,28,26,0.1); padding-top:8px;"><span>Tổng thanh toán</span><strong id="checkout-total">{{ number_format((float) ($subtotal + ($selectedShippingMethod?->base_fee ?? 0) - $couponDiscount), 0, ',', '.') }}đ</strong></div>
                 </div>
             </aside>
         </div>
@@ -175,6 +184,45 @@
                     if (map.address_line && data.address_line) map.address_line.value = data.address_line;
                 });
             });
+
+            const summary = document.querySelector('[data-subtotal]');
+            const shippingFee = document.getElementById('checkout-shipping-fee');
+            const discount = document.getElementById('checkout-discount');
+            const total = document.getElementById('checkout-total');
+            const shippingRadios = document.querySelectorAll('input[name="shipping_method_id"]');
+            const applyCouponButton = document.getElementById('apply-coupon');
+
+            if (summary && shippingFee && discount && total) {
+                const subtotal = Number(summary.dataset.subtotal || 0);
+                const couponDiscount = Number(summary.dataset.discount || 0);
+                const formatMoney = (value) => `${Math.max(0, value).toLocaleString('vi-VN')}đ`;
+
+                const updateSummary = () => {
+                    const selected = document.querySelector('input[name="shipping_method_id"]:checked');
+                    const fee = Number(selected?.dataset.fee || 0);
+                    shippingFee.textContent = formatMoney(fee);
+                    discount.textContent = `-${formatMoney(couponDiscount)}`;
+                    total.textContent = formatMoney(subtotal + fee - couponDiscount);
+                };
+
+                shippingRadios.forEach((radio) => radio.addEventListener('change', updateSummary));
+                updateSummary();
+            }
+
+            if (applyCouponButton) {
+                applyCouponButton.addEventListener('click', () => {
+                    const couponInput = document.getElementById('coupon_code');
+                    const couponCode = couponInput?.value.trim() || '';
+                    const action = applyCouponButton.dataset.action;
+                    const url = new URL(action, window.location.origin);
+
+                    if (couponCode) {
+                        url.searchParams.set('coupon_code', couponCode);
+                    }
+
+                    window.location.assign(url.toString());
+                });
+            }
         });
     </script>
 @endsection

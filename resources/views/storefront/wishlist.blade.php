@@ -15,8 +15,8 @@
                     <h3>Vui lòng đăng nhập để xem danh sách yêu thích.</h3>
                     <p>Tạo tài khoản hoặc đăng nhập để lưu sản phẩm yêu thích của bạn.</p>
                     <div style="display:flex; gap:12px; margin-top:16px; flex-wrap:wrap;">
-                        <a href="#" class="btn btn-primary">Đăng nhập</a>
-                        <a href="#" class="btn btn-secondary">Tạo tài khoản</a>
+                        <a href="{{ route('login') }}" class="btn btn-primary">Đăng nhập</a>
+                        <a href="{{ route('register') }}" class="btn btn-secondary">Tạo tài khoản</a>
                     </div>
                 </div>
             @elseif ($items->isEmpty())

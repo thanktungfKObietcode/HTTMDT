@@ -77,13 +77,21 @@
                             @php
                                 $inWishlist = auth()->user()->wishlist()->where('product_id', $product->id)->exists();
                             @endphp
-                            <form method="POST" action="{{ route('wishlist.add') }}" style="display:inline;">
-                                @csrf
-                                <input type="hidden" name="product_id" value="{{ $product->id }}">
-                                <button type="submit" class="wishlist-btn {{ $inWishlist ? 'active' : '' }}" aria-label="{{ $inWishlist ? 'Remove from wishlist' : 'Add to wishlist' }}" title="{{ $inWishlist ? 'Xóa khỏi yêu thích' : 'Thêm vào yêu thích' }}">{{ $inWishlist ? '♥' : '♡' }}</button>
-                            </form>
+                            @if ($inWishlist)
+                                <form method="POST" action="{{ route('wishlist.remove', $product->id) }}" style="display:inline;">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="wishlist-btn active" aria-label="Remove from wishlist" title="Xóa khỏi yêu thích">♥</button>
+                                </form>
+                            @else
+                                <form method="POST" action="{{ route('wishlist.add') }}" style="display:inline;">
+                                    @csrf
+                                    <input type="hidden" name="product_id" value="{{ $product->id }}">
+                                    <button type="submit" class="wishlist-btn" aria-label="Add to wishlist" title="Thêm vào yêu thích">♡</button>
+                                </form>
+                            @endif
                         @else
-                            <button class="wishlist-btn" type="button" aria-label="Add to wishlist" onclick="loginPrompt()" title="Đăng nhập để thêm vào yêu thích">♡</button>
+                            <a href="{{ route('login') }}" class="wishlist-btn" aria-label="Add to wishlist" title="Đăng nhập để thêm vào yêu thích">♡</a>
                         @endif
                     </div>
                     <div class="product-info">

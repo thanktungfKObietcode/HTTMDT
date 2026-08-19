@@ -5,8 +5,11 @@ namespace App\Http\Controllers;
 use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class CartController extends Controller
@@ -30,22 +33,49 @@ class CartController extends Controller
         $request->validate([
             'product_id' => 'required|exists:products,id',
             'quantity' => 'nullable|integer|min:1',
+            'product_variant_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('product_variants', 'id')->where(function ($query) use ($request) {
+                    $query->where('product_id', $request->input('product_id'))
+                        ->where('is_active', true);
+                }),
+            ],
         ]);
 
-        $product = Product::findOrFail($request->product_id);
+        $product = Product::where('is_active', true)->findOrFail($request->product_id);
+        $variant = $request->filled('product_variant_id')
+            ? ProductVariant::where('product_id', $product->id)
+                ->where('is_active', true)
+                ->findOrFail($request->integer('product_variant_id'))
+            : null;
         $cart = $this->getOrCreateCart();
 
-        $item = $cart->items()->where('product_id', $product->id)->first();
+        $item = $cart->items()
+            ->where('product_id', $product->id)
+            ->where('product_variant_id', $variant?->id)
+            ->first();
+        $unitPrice = (float) ($variant?->sale_price ?: $variant?->price ?: $product->sale_price ?: $product->price);
+        $quantity = (int) $request->input('quantity', 1);
+        $requestedQuantity = ($item?->quantity ?? 0) + $quantity;
+        $stock = (int) ($variant?->stock ?? $product->stock);
+
+        if ($requestedQuantity > $stock) {
+            throw ValidationException::withMessages([
+                'quantity' => 'Số lượng sản phẩm vượt quá tồn kho hiện tại.',
+            ]);
+        }
 
         if ($item) {
-            $item->quantity += (int) $request->input('quantity', 1);
-            $item->unit_price = $product->sale_price ?: $product->price;
+            $item->quantity = $requestedQuantity;
+            $item->unit_price = $unitPrice;
             $item->save();
         } else {
             $cart->items()->create([
                 'product_id' => $product->id,
-                'quantity' => (int) $request->input('quantity', 1),
-                'unit_price' => $product->sale_price ?: $product->price,
+                'product_variant_id' => $variant?->id,
+                'quantity' => $quantity,
+                'unit_price' => $unitPrice,
             ]);
         }
 
@@ -54,6 +84,9 @@ class CartController extends Controller
 
     public function update(Request $request, CartItem $item): RedirectResponse
     {
+        $cart = $this->getOrCreateCart();
+        $item = $cart->items()->findOrFail($item->id);
+
         $request->validate([
             'quantity' => 'required|integer|min:1',
         ]);
@@ -66,6 +99,8 @@ class CartController extends Controller
 
     public function remove(CartItem $item): RedirectResponse
     {
+        $cart = $this->getOrCreateCart();
+        $item = $cart->items()->findOrFail($item->id);
         $item->delete();
 
         return redirect()->route('cart.index')->with('success', 'Sản phẩm đã được xóa khỏi giỏ hàng.');
