@@ -99,6 +99,14 @@ Route::get('/', function () {
         Route::delete('/coupons/{coupon}', [\App\Http\Controllers\Admin\CouponController::class, 'destroy'])->name('coupons.destroy');
         Route::post('/coupons/{coupon}/activate', [\App\Http\Controllers\Admin\CouponController::class, 'activate'])->name('coupons.activate');
         Route::post('/coupons/{coupon}/deactivate', [\App\Http\Controllers\Admin\CouponController::class, 'deactivate'])->name('coupons.deactivate');
+        Route::get('/shipping', [\App\Http\Controllers\Admin\ShippingMethodController::class, 'index'])->name('shipping.index');
+        Route::get('/shipping/create', [\App\Http\Controllers\Admin\ShippingMethodController::class, 'create'])->name('shipping.create');
+        Route::post('/shipping', [\App\Http\Controllers\Admin\ShippingMethodController::class, 'store'])->name('shipping.store');
+        Route::get('/shipping/{shipping}/edit', [\App\Http\Controllers\Admin\ShippingMethodController::class, 'edit'])->name('shipping.edit');
+        Route::put('/shipping/{shipping}', [\App\Http\Controllers\Admin\ShippingMethodController::class, 'update'])->name('shipping.update');
+        Route::delete('/shipping/{shipping}', [\App\Http\Controllers\Admin\ShippingMethodController::class, 'destroy'])->name('shipping.destroy');
+        Route::post('/shipping/{shipping}/activate', [\App\Http\Controllers\Admin\ShippingMethodController::class, 'activate'])->name('shipping.activate');
+        Route::post('/shipping/{shipping}/deactivate', [\App\Http\Controllers\Admin\ShippingMethodController::class, 'deactivate'])->name('shipping.deactivate');
     });
 
 Route::get('/san-pham', [ProductController::class, 'index'])->name('products.index');

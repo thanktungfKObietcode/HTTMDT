@@ -20,6 +20,7 @@
                     <a href="{{ route('admin.collections.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Bộ sưu tập</a>
                     <a href="{{ route('admin.materials.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Chất liệu</a>
                     <a href="{{ route('admin.coupons.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Mã giảm giá</a>
+                    <a href="{{ route('admin.shipping.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Vận chuyển</a>
                 </nav>
             </aside>
             <div style="min-width:0;">
