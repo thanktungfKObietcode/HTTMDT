@@ -60,6 +60,7 @@ Route::get('/', function () {
         Route::get('/users', [\App\Http\Controllers\Admin\UserController::class, 'index'])->name('users.index');
         Route::get('/users/{user}', [\App\Http\Controllers\Admin\UserController::class, 'show'])->name('users.show');
         Route::post('/users/{user}/deactivate', [\App\Http\Controllers\Admin\UserController::class, 'deactivate'])->name('users.deactivate');
+        Route::post('/users/{user}/activate', [\App\Http\Controllers\Admin\UserController::class, 'activate'])->name('users.activate');
         Route::get('/products', [\App\Http\Controllers\Admin\ProductController::class, 'index'])->name('products.index');
         Route::get('/products/create', [\App\Http\Controllers\Admin\ProductController::class, 'create'])->name('products.create');
         Route::post('/products', [\App\Http\Controllers\Admin\ProductController::class, 'store'])->name('products.store');

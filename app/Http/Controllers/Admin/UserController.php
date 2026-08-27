@@ -57,4 +57,11 @@ class UserController extends Controller
 
         return back()->with('success', 'Người dùng đã được vô hiệu hóa.');
     }
+
+    public function activate(User $user): RedirectResponse
+    {
+        $user->update(['is_active' => true]);
+
+        return back()->with('success', 'Người dùng đã được kích hoạt.');
+    }
 }
