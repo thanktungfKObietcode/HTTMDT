@@ -107,6 +107,8 @@ Route::get('/', function () {
         Route::delete('/shipping/{shipping}', [\App\Http\Controllers\Admin\ShippingMethodController::class, 'destroy'])->name('shipping.destroy');
         Route::post('/shipping/{shipping}/activate', [\App\Http\Controllers\Admin\ShippingMethodController::class, 'activate'])->name('shipping.activate');
         Route::post('/shipping/{shipping}/deactivate', [\App\Http\Controllers\Admin\ShippingMethodController::class, 'deactivate'])->name('shipping.deactivate');
+        Route::get('/roles', [\App\Http\Controllers\Admin\RoleController::class, 'index'])->name('roles.index');
+        Route::get('/roles/{role}', [\App\Http\Controllers\Admin\RoleController::class, 'show'])->name('roles.show');
     });
 
 Route::get('/san-pham', [ProductController::class, 'index'])->name('products.index');
