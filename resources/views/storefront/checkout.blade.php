@@ -12,6 +12,7 @@
         <div class="container" style="display:grid; grid-template-columns:minmax(0, 1.3fr) minmax(320px, 1fr); gap:24px; align-items:start;">
             <form method="POST" action="{{ route('checkout.store') }}" class="filter-box" style="display:grid; gap:20px;">
                 @csrf
+                <input type="hidden" name="checkout_token" value="{{ $checkoutToken }}">
 
                 @if($errors->has('checkout'))
                     <div style="padding:10px 12px; border-radius:8px; background:#ffe8e8; color:#8a1f1f;">
@@ -119,7 +120,11 @@
                         <label for="payment_method" style="font-weight:600;">Phương thức thanh toán</label>
                         <select id="payment_method" name="payment_method" required style="width:100%; padding:10px 12px; border:1px solid rgba(31,28,26,0.12); border-radius:8px;">
                             <option value="cod" {{ old('payment_method', 'cod') === 'cod' ? 'selected' : '' }}>Thanh toán khi nhận hàng (COD)</option>
+                            @if(in_array('vnpay', $paymentMethods, true))
+                                <option value="vnpay" @selected(old('payment_method') === 'vnpay')>VNPay (Sandbox — thanh toán thử nghiệm)</option>
+                            @endif
                         </select>
+                        @error('payment_method')<small style="color:#c62828;">{{ $message }}</small>@enderror
                     </div>
                 </div>
 
@@ -129,12 +134,11 @@
             <aside class="filter-box" data-subtotal="{{ $subtotal }}" data-discount="{{ $couponDiscount }}" style="display:grid; gap:16px; position:sticky; top:20px;">
                 <h3 style="margin:0;">Tóm tắt đơn hàng</h3>
                 <div style="display:grid; gap:12px;">
-                    @foreach($items as $item)
+                    @foreach($cartEntries as $entry)
                         @php
-                            $product = $item->product;
-                            $variant = $item->productVariant;
-                            $unitPrice = (float) ($variant?->sale_price ?: $variant?->price ?: $product->sale_price ?: $product->price ?: 0);
-                            $lineTotal = $unitPrice * $item->quantity;
+                            $item = $entry['item'];
+                            $product = $entry['product'];
+                            $variant = $entry['variant'];
                         @endphp
                         <div style="display:grid; grid-template-columns:54px 1fr auto; gap:10px; align-items:start; border-bottom:1px solid rgba(31,28,26,0.08); padding-bottom:10px;">
                             <img src="{{ $product->featured_image }}" alt="{{ $product->name }}" style="width:54px; height:54px; object-fit:cover; border-radius:10px;">
@@ -146,7 +150,7 @@
                                 @endif
                                 <small style="display:block; color:#666;">SL: {{ $item->quantity }}</small>
                             </div>
-                            <strong>{{ number_format($lineTotal, 0, ',', '.') }}đ</strong>
+                            <strong>{{ $entry['line_total_display'] }}</strong>
                         </div>
                     @endforeach
                 </div>

@@ -45,6 +45,75 @@ class User extends Authenticatable
         );
     }
 
+    public function hasRole(string $name): bool
+    {
+        if ($this->relationLoaded('roles')) {
+            return $this->roles->contains(
+                fn (Role $role): bool => $role->name === $name && $role->guard_name === 'web'
+            );
+        }
+
+        return $this->roles()
+            ->where('roles.name', $name)
+            ->where('roles.guard_name', 'web')
+            ->exists();
+    }
+
+    /**
+     * @param  array<int, string>  $names
+     */
+    public function hasAnyRole(array $names): bool
+    {
+        if ($names === []) {
+            return false;
+        }
+
+        if ($this->relationLoaded('roles')) {
+            return $this->roles->contains(
+                fn (Role $role): bool => in_array($role->name, $names, true) && $role->guard_name === 'web'
+            );
+        }
+
+        return $this->roles()
+            ->whereIn('roles.name', $names)
+            ->where('roles.guard_name', 'web')
+            ->exists();
+    }
+
+    public function hasPermission(string $permission): bool
+    {
+        if ($this->hasRole('admin')) {
+            return true;
+        }
+
+        if (! $this->hasRole('staff')) {
+            return false;
+        }
+
+        if ($this->relationLoaded('roles')
+            && $this->roles->every(fn (Role $role): bool => $role->relationLoaded('permissions'))) {
+            return $this->roles->contains(
+                fn (Role $role): bool => $role->guard_name === 'web'
+                    && $role->permissions->contains(
+                        fn (Permission $assigned): bool => $assigned->name === $permission
+                            && $assigned->guard_name === 'web'
+                    )
+            );
+        }
+
+        return $this->roles()
+            ->where('roles.guard_name', 'web')
+            ->whereHas('permissions', fn ($query) => $query
+                ->where('permissions.name', $permission)
+                ->where('permissions.guard_name', 'web'))
+            ->exists();
+    }
+
+    public function canAccessBackoffice(): bool
+    {
+        return (bool) $this->is_active && $this->hasAnyRole(['admin', 'staff']);
+    }
+
     /**
      * User addresses.
      */

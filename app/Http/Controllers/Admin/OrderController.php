@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
+use App\Models\Refund;
 use App\Services\OrderLifecycleService;
 use App\Services\PaymentService;
 use Illuminate\Http\RedirectResponse;
@@ -53,10 +54,13 @@ class OrderController extends Controller
             'items.productVariant',
             'statusHistory.changedBy',
             'paymentTransactions' => fn ($query) => $query->latest('id'),
-            'refunds' => fn ($query) => $query->latest('id'),
+            'refunds' => fn ($query) => $query
+                ->with(['requestedBy', 'reviewedBy', 'processedBy', 'paymentTransaction'])
+                ->latest('id'),
         ]);
 
         $availableTransitions = collect($this->orderStatuses())
+            ->reject(fn ($status) => $status === OrderLifecycleService::STATUS_REFUNDED)
             ->filter(fn ($status) => $this->lifecycleService->canTransition((string) $order->status, $status))
             ->values()
             ->all();
@@ -75,6 +79,12 @@ class OrderController extends Controller
             'note' => 'nullable|string|max:1000',
         ]);
 
+        if ($validated['status'] === OrderLifecycleService::STATUS_REFUNDED) {
+            return back()->withErrors([
+                'status' => 'Trạng thái refunded chỉ được cập nhật qua refund workflow đã hoàn tất.',
+            ]);
+        }
+
         try {
             $this->lifecycleService->transition(
                 $order,
@@ -89,22 +99,62 @@ class OrderController extends Controller
         }
     }
 
-    public function refund(Request $request, Order $order): RedirectResponse
+    public function approveRefund(Request $request, Refund $refund): RedirectResponse
     {
         $validated = $request->validate([
-            'amount' => 'required|numeric|min:1',
-            'reason' => 'nullable|string|max:255',
+            'admin_note' => 'nullable|string|max:1000',
         ]);
 
         try {
-            $this->paymentService->requestRefund(
-                $order,
-                (float) $validated['amount'],
-                $validated['reason'] ?? null,
-                auth()->id()
+            $this->paymentService->approveRefund(
+                $refund,
+                (int) auth()->id(),
+                $validated['admin_note'] ?? null
             );
 
-            return back()->with('success', 'Yêu cầu hoàn tiền đã được ghi nhận.');
+            return back()->with('success', 'Yêu cầu hoàn tiền đã được duyệt.');
+        } catch (\Throwable $exception) {
+            return back()->withErrors(['refund' => $exception->getMessage()]);
+        }
+    }
+
+    public function rejectRefund(Request $request, Refund $refund): RedirectResponse
+    {
+        $validated = $request->validate([
+            'admin_note' => 'required|string|max:1000',
+        ]);
+
+        try {
+            $this->paymentService->rejectRefund(
+                $refund,
+                (int) auth()->id(),
+                $validated['admin_note']
+            );
+
+            return back()->with('success', 'Yêu cầu hoàn tiền đã bị từ chối.');
+        } catch (\Throwable $exception) {
+            return back()->withErrors(['refund' => $exception->getMessage()]);
+        }
+    }
+
+    public function executeRefund(Request $request, Refund $refund): RedirectResponse
+    {
+        $validated = $request->validate([
+            'admin_note' => 'nullable|string|max:1000',
+        ]);
+
+        try {
+            $executedRefund = $this->paymentService->executeRefund(
+                $refund,
+                (int) auth()->id(),
+                $validated['admin_note'] ?? null
+            );
+
+            $message = $executedRefund->status === Refund::STATUS_COMPLETED
+                ? 'Hoàn tiền nội bộ đã hoàn tất.'
+                : 'Yêu cầu hoàn tiền đang được xử lý.';
+
+            return back()->with('success', $message);
         } catch (\Throwable $exception) {
             return back()->withErrors(['refund' => $exception->getMessage()]);
         }

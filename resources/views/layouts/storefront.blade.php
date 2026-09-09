@@ -65,6 +65,15 @@
         </header>
 
         <main>
+            @if (session('cart_notices'))
+                <div class="container" style="padding-top:16px;">
+                    <div class="filter-box" style="padding:14px 18px; background:#fff7df; color:#73510d;">
+                        @foreach ((array) session('cart_notices') as $notice)
+                            <p style="margin:0;">{{ $notice }}</p>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
             @yield('content')
         </main>
 

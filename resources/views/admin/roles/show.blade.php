@@ -36,6 +36,25 @@
         @endif
     </div>
 
+    <section class="filter-box">
+        <h2 style="margin-top:0; font-size:1rem;">Cập nhật quyền</h2>
+        <form method="POST" action="{{ route('admin.roles.permissions.update', $role) }}" style="display:grid; gap:14px;">
+            @csrf
+            @method('PUT')
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:10px;">
+                @foreach($allPermissions as $permission)
+                    <label style="display:flex; align-items:center; gap:6px;">
+                        <input type="checkbox" name="permissions[]" value="{{ $permission->id }}"
+                            {{ $role->permissions->contains('id', $permission->id) ? 'checked' : '' }}>
+                        <code>{{ $permission->name }}</code>
+                    </label>
+                @endforeach
+            </div>
+            @error('permissions')<span class="admin-error">{{ $message }}</span>@enderror
+            <div><button class="btn btn-primary" type="submit">Lưu quyền</button></div>
+        </form>
+    </section>
+
     {{-- Users --}}
     <div>
         <h2 style="font-size:1rem; font-weight:700; margin-bottom:12px;">Người dùng có vai trò này — {{ $role->users->count() }}</h2>

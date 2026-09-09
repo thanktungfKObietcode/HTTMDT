@@ -22,6 +22,13 @@ class ProductVariant extends Model
         'is_active',
     ];
 
+    protected $casts = [
+        'weight' => 'decimal:3',
+        'price' => 'decimal:2',
+        'sale_price' => 'decimal:2',
+        'is_active' => 'boolean',
+    ];
+
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);

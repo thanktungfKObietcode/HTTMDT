@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use App\Models\UserAddress;
+use App\Models\Role;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
@@ -14,6 +15,8 @@ class AuthenticationTest extends TestCase
 
     public function test_user_can_register(): void
     {
+        $customerRole = Role::create(['name' => 'customer', 'guard_name' => 'web']);
+
         $response = $this->post(route('register.store'), [
             'name' => 'Test User',
             'email' => 'test@example.com',
@@ -29,10 +32,13 @@ class AuthenticationTest extends TestCase
             'phone' => '0912345678',
         ]);
         $this->assertTrue(auth()->check());
+        $this->assertTrue(auth()->user()->roles()->whereKey($customerRole->id)->exists());
     }
 
     public function test_password_is_hashed_on_register(): void
     {
+        Role::create(['name' => 'customer', 'guard_name' => 'web']);
+
         $this->post(route('register.store'), [
             'name' => 'Test User',
             'email' => 'test@example.com',

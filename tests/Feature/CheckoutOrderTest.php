@@ -8,6 +8,7 @@ use App\Models\Coupon;
 use App\Models\Material;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\ShippingMethod;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -107,6 +108,202 @@ class CheckoutOrderTest extends TestCase
 
         $product->refresh();
         $this->assertEquals(3, (int) $product->stock);
+    }
+
+    public function test_checkout_with_multiple_items_updates_each_inventory_row(): void
+    {
+        [$user, $shipping, $product] = $this->createBaseData();
+        $cart = $this->createCartWithItem($user, $product, 2, 90000);
+        $secondProduct = Product::create([
+            'name' => 'Day chuyen bac 925',
+            'slug' => 'day-chuyen-bac-925-' . uniqid(),
+            'sku' => 'SKU-CHECKOUT-SECOND-' . uniqid(),
+            'price' => 200000,
+            'is_active' => true,
+            'stock' => 4,
+        ]);
+        $cart->items()->create([
+            'product_id' => $secondProduct->id,
+            'quantity' => 3,
+            'unit_price' => 200000,
+        ]);
+
+        $this->actingAs($user)->post(route('checkout.store'), $this->payload($shipping->id));
+
+        $this->assertSame(3, (int) $product->refresh()->stock);
+        $this->assertSame(1, (int) $secondProduct->refresh()->stock);
+        $this->assertDatabaseCount('order_items', 2);
+    }
+
+    public function test_checkout_decrements_variant_stock_without_changing_parent_stock(): void
+    {
+        [$user, $shipping, $product] = $this->createBaseData();
+        $variant = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'SKU-CHECKOUT-VARIANT-' . uniqid(),
+            'size' => 'M',
+            'price' => 110000,
+            'stock' => 4,
+            'is_active' => true,
+        ]);
+        $this->createCartWithVariant($user, $product, $variant, 2, 110000);
+
+        $this->actingAs($user)->post(route('checkout.store'), $this->payload($shipping->id));
+
+        $this->assertSame(5, (int) $product->refresh()->stock);
+        $this->assertSame(2, (int) $variant->refresh()->stock);
+        $this->assertDatabaseHas('order_items', [
+            'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
+            'quantity' => 2,
+        ]);
+    }
+
+    public function test_cancel_restores_product_and_variant_inventory(): void
+    {
+        [$user, $shipping, $product] = $this->createBaseData();
+        $simpleProduct = Product::create([
+            'name' => 'San pham khong bien the',
+            'slug' => 'san-pham-khong-bien-the-'.uniqid(),
+            'sku' => 'SKU-CANCEL-SIMPLE-'.uniqid(),
+            'price' => 90000,
+            'is_active' => true,
+            'stock' => 5,
+        ]);
+        $variant = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'SKU-CANCEL-VARIANT-' . uniqid(),
+            'size' => 'L',
+            'price' => 120000,
+            'stock' => 4,
+            'is_active' => true,
+        ]);
+        $cart = $this->createCartWithItem($user, $simpleProduct, 2, 90000);
+        $cart->items()->create([
+            'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
+            'quantity' => 2,
+            'unit_price' => 120000,
+        ]);
+
+        $this->actingAs($user)->post(route('checkout.store'), $this->payload($shipping->id));
+        $order = Order::query()->firstOrFail();
+        $this->assertSame(3, (int) $simpleProduct->refresh()->stock);
+        $this->assertSame(5, (int) $product->refresh()->stock);
+        $this->assertSame(2, (int) $variant->refresh()->stock);
+
+        $this->actingAs($user)->post(route('order.cancel', $order))
+            ->assertRedirect(route('order.show', $order));
+
+        $this->assertSame(5, (int) $simpleProduct->refresh()->stock);
+        $this->assertSame(5, (int) $product->refresh()->stock);
+        $this->assertSame(4, (int) $variant->refresh()->stock);
+    }
+
+    public function test_duplicate_checkout_token_returns_original_order_without_double_decrement(): void
+    {
+        [$user, $shipping, $product] = $this->createBaseData();
+        $this->createCartWithItem($user, $product, 2, 90000);
+        $payload = $this->payload($shipping->id);
+
+        $firstResponse = $this->actingAs($user)->post(route('checkout.store'), $payload);
+        $order = Order::query()->firstOrFail();
+
+        $firstResponse->assertRedirect(route('order.show', $order));
+
+        $secondResponse = $this->actingAs($user)->post(route('checkout.store'), $payload);
+
+        $secondResponse->assertRedirect(route('order.show', $order));
+        $this->assertDatabaseCount('orders', 1);
+        $this->assertDatabaseCount('payment_transactions', 1);
+        $this->assertSame(3, (int) $product->refresh()->stock);
+    }
+
+    public function test_checkout_token_cannot_be_reused_by_another_user(): void
+    {
+        [$user, $shipping, $product] = $this->createBaseData();
+        $this->createCartWithItem($user, $product, 2, 90000);
+        $payload = $this->payload($shipping->id);
+
+        $this->actingAs($user)->post(route('checkout.store'), $payload);
+        $order = Order::query()->firstOrFail();
+
+        $otherUser = User::factory()->create();
+        $this->createCartWithItem($otherUser, $product, 1, 90000);
+
+        $response = $this->actingAs($otherUser)
+            ->from(route('checkout.index'))
+            ->post(route('checkout.store'), $payload);
+
+        $response->assertRedirect(route('checkout.index'));
+        $response->assertSessionHasErrors('checkout');
+        $this->assertDatabaseCount('orders', 1);
+        $this->assertSame(3, (int) $product->refresh()->stock);
+        $this->assertNotSame($otherUser->id, $order->refresh()->user_id);
+    }
+
+    public function test_stock_guard_rolls_back_and_never_goes_negative(): void
+    {
+        [$user, $shipping, $product] = $this->createBaseData();
+        $product->update(['stock' => 1]);
+        $cart = $this->createCartWithItem($user, $product, 1, 90000);
+        $cart->items()->create([
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'unit_price' => 90000,
+        ]);
+
+        $response = $this->actingAs($user)
+            ->from(route('checkout.index'))
+            ->post(route('checkout.store'), $this->payload($shipping->id));
+
+        $response->assertRedirect(route('checkout.index'));
+        $response->assertSessionHasErrors('checkout');
+        $this->assertDatabaseCount('orders', 0);
+        $this->assertSame(1, (int) $product->refresh()->stock);
+    }
+
+    public function test_valid_cancel_restores_stock_exactly_once(): void
+    {
+        [$user, $shipping, $product] = $this->createBaseData();
+        $this->createCartWithItem($user, $product, 2, 90000);
+
+        $this->actingAs($user)->post(route('checkout.store'), $this->payload($shipping->id));
+        $order = Order::query()->firstOrFail();
+        $this->assertSame(3, (int) $product->refresh()->stock);
+
+        $this->actingAs($user)->post(route('order.cancel', $order))
+            ->assertRedirect(route('order.show', $order));
+        $this->assertSame('cancelled', $order->refresh()->status);
+        $this->assertSame(5, (int) $product->refresh()->stock);
+
+        $this->actingAs($user)->post(route('order.cancel', $order))
+            ->assertRedirect(route('order.show', $order));
+        $this->assertSame(5, (int) $product->refresh()->stock);
+        $this->assertDatabaseCount('order_status_history', 2);
+    }
+
+    public function test_invalid_cancel_transition_does_not_restore_stock(): void
+    {
+        [$user, $shipping, $product] = $this->createBaseData();
+        $this->createCartWithItem($user, $product, 2, 90000);
+
+        $this->actingAs($user)->post(route('checkout.store'), $this->payload($shipping->id));
+        $order = Order::query()->firstOrFail();
+        $order->update(['status' => 'shipped']);
+
+        $response = $this->actingAs($user)
+            ->from(route('order.show', $order))
+            ->post(route('order.cancel', $order));
+
+        $response->assertRedirect(route('order.show', $order));
+        $response->assertSessionHasErrors('status');
+        $this->assertSame('shipped', $order->refresh()->status);
+        $this->assertSame(3, (int) $product->refresh()->stock);
+        $this->assertDatabaseMissing('order_status_history', [
+            'order_id' => $order->id,
+            'status' => 'cancelled',
+        ]);
     }
 
     public function test_order_status_history_is_created(): void
@@ -390,6 +587,23 @@ class CheckoutOrderTest extends TestCase
         return $cart;
     }
 
+    private function createCartWithVariant(User $user, Product $product, ProductVariant $variant, int $quantity, float $unitPrice): Cart
+    {
+        $cart = Cart::create([
+            'user_id' => $user->id,
+            'session_id' => session()->getId(),
+        ]);
+
+        $cart->items()->create([
+            'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
+            'quantity' => $quantity,
+            'unit_price' => $unitPrice,
+        ]);
+
+        return $cart;
+    }
+
     private function payload(int $shippingMethodId): array
     {
         return [
@@ -402,6 +616,7 @@ class CheckoutOrderTest extends TestCase
             'address_line' => '123 Duong ABC',
             'shipping_method_id' => $shippingMethodId,
             'payment_method' => 'cod',
+            'checkout_token' => (string) \Illuminate\Support\Str::uuid(),
         ];
     }
 }

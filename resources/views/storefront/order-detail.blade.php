@@ -10,6 +10,27 @@
 
     <section class="section-block">
         <div class="container" style="display:grid; gap:20px;">
+            @if(session('success'))
+                <div style="padding:10px 12px; border-radius:8px; background:#e8f5e9; color:#2e7d32;">
+                    {{ session('success') }}
+                </div>
+            @endif
+            @error('refund')
+                <div style="padding:10px 12px; border-radius:8px; background:#ffe8e8; color:#8a1f1f;">
+                    {{ $message }}
+                </div>
+            @enderror
+            @error('status')
+                <div style="padding:10px 12px; border-radius:8px; background:#ffe8e8; color:#8a1f1f;">
+                    {{ $message }}
+                </div>
+            @enderror
+            @error('payment')
+                <div style="padding:10px 12px; border-radius:8px; background:#ffe8e8; color:#8a1f1f;">
+                    {{ $message }}
+                </div>
+            @enderror
+
             <div class="filter-box" style="display:grid; gap:14px;">
                 <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
                     <h3 style="margin:0;">Chi tiết đơn hàng</h3>
@@ -45,9 +66,17 @@
                 @endif
 
                 <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:4px;">
-                    <a href="{{ route('payment.show', $order) }}" class="btn btn-secondary">Xem payment</a>
+                    @if($canPayVnPay)
+                        <form method="POST" action="{{ route('vnpay.initiate', $order) }}">
+                            @csrf
+                            <button type="submit" class="btn btn-primary">Thanh toán lại bằng VNPay</button>
+                        </form>
+                    @endif
+                    @unless(in_array($order->status, ['cancelled', 'refunded'], true))
+                        <a href="{{ route('payment.show', $order) }}" class="btn btn-secondary">Xem payment</a>
+                    @endunless
 
-                    @if(in_array($order->status, ['pending', 'confirmed'], true))
+                    @if(in_array($order->status, ['pending', 'confirmed'], true) && in_array($order->payment_status, ['pending', 'failed'], true))
                         <form method="POST" action="{{ route('order.cancel', $order) }}">
                             @csrf
                             <button type="submit" class="btn btn-link" style="color:#d84315;">Hủy đơn</button>
@@ -62,15 +91,38 @@
                     @endif
                 </div>
 
-                @if(in_array($order->payment_status, ['paid', 'refunded'], true))
+                @if($order->refunds->isNotEmpty())
+                    <div style="display:grid; gap:8px; margin-top:8px;">
+                        <strong>Trạng thái hoàn tiền</strong>
+                        @foreach($order->refunds as $refund)
+                            <div style="padding:10px 12px; border:1px solid rgba(31,28,26,0.1); border-radius:8px;">
+                                <span>{{ number_format((float) $refund->amount, 2, ',', '.') }}đ</span>
+                                · <strong>{{ $refund->status_label }}</strong>
+                                @if($refund->reason)
+                                    <small style="display:block; color:#666;">{{ $refund->reason }}</small>
+                                @endif
+                                @if($refund->admin_note && in_array($refund->status, ['rejected', 'failed'], true))
+                                    <small style="display:block; color:#8a1f1f;">{{ $refund->admin_note }}</small>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+
+                @if($refundEligibility['eligible'])
                     <form method="POST" action="{{ route('payment.refund', $order) }}" style="display:grid; gap:8px; margin-top:8px;">
                         @csrf
                         <label style="font-weight:600;">Yêu cầu hoàn tiền</label>
-                        <input type="number" min="1" step="0.01" name="amount" placeholder="Số tiền hoàn" style="padding:10px 12px; border:1px solid rgba(31,28,26,0.12); border-radius:8px;">
-                        <input type="text" name="reason" placeholder="Lý do" style="padding:10px 12px; border:1px solid rgba(31,28,26,0.12); border-radius:8px;">
+                        <small style="color:#666;">Tối đa: {{ number_format((float) $refundEligibility['refundable_amount'], 2, ',', '.') }}đ</small>
+                        <input type="number" min="0.01" max="{{ $refundEligibility['refundable_amount'] }}" step="0.01" name="amount" value="{{ old('amount') }}" placeholder="Số tiền hoàn" required style="padding:10px 12px; border:1px solid rgba(31,28,26,0.12); border-radius:8px;">
+                        @error('amount')<small style="color:#c62828;">{{ $message }}</small>@enderror
+                        <input type="text" name="reason" value="{{ old('reason') }}" placeholder="Lý do" style="padding:10px 12px; border:1px solid rgba(31,28,26,0.12); border-radius:8px;">
+                        @error('reason')<small style="color:#c62828;">{{ $message }}</small>@enderror
                         <button type="submit" class="btn btn-secondary" style="width:max-content;">Gửi yêu cầu hoàn tiền</button>
                         @error('refund')<small style="color:#c62828;">{{ $message }}</small>@enderror
                     </form>
+                @elseif($refundEligibility['active_refund'])
+                    <small style="color:#666; margin-top:8px;">Yêu cầu hoàn tiền hiện tại đang được xử lý.</small>
                 @endif
             </div>
 

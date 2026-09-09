@@ -26,10 +26,11 @@ class AdminRolePermissionManagementTest extends TestCase
         $this->actingAs($user)->get(route('admin.roles.index'))->assertForbidden();
     }
 
-    public function test_inactive_admin_gets_403(): void
+    public function test_inactive_admin_is_logged_out_and_redirected(): void
     {
         $admin = $this->createAdmin(false);
-        $this->actingAs($admin)->get(route('admin.roles.index'))->assertForbidden();
+        $this->actingAs($admin)->get(route('admin.roles.index'))->assertRedirect(route('login'));
+        $this->assertGuest();
     }
 
     public function test_active_admin_can_access_roles_list(): void

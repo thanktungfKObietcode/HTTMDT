@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Models\Order;
 use App\Services\OrderLifecycleService;
 use App\Services\PaymentService;
+use App\Support\PaymentMethod;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class PaymentController extends Controller
@@ -18,16 +20,24 @@ class PaymentController extends Controller
     ) {
     }
 
-    public function show(Order $order): View
+    public function show(Order $order): View|RedirectResponse
     {
         $this->authorizeOrderOwner($order);
 
-        $transaction = $this->paymentService->createOrGetPendingTransaction($order);
+        try {
+            $transaction = $order->payment_method === PaymentMethod::VNPAY
+                ? $order->paymentTransactions()->latest('id')->first()
+                : $this->paymentService->createOrGetPendingTransaction($order);
+        } catch (\Throwable $exception) {
+            return redirect()->route('order.show', $order)
+                ->withErrors(['payment' => $exception->getMessage()]);
+        }
 
         return view('storefront.payment', [
             'pageTitle' => 'Thanh toan | Silver Atelier',
             'order' => $order->load(['paymentTransactions' => fn ($query) => $query->latest('id')]),
             'transaction' => $transaction,
+            'canPayVnPay' => $this->paymentService->canInitiateVnPay($order),
         ]);
     }
 
@@ -36,9 +46,9 @@ class PaymentController extends Controller
         $payload = $request->validate([
             'order_number' => 'required|string',
             'transaction_id' => 'required|string',
-            'payment_status' => 'required|string',
-            'amount' => 'required|numeric|min:0',
-            'gateway' => 'nullable|string',
+            'payment_status' => ['required', Rule::in([PaymentService::PAYMENT_PAID, PaymentService::PAYMENT_FAILED])],
+            'amount' => ['required', 'numeric', 'gt:0', 'decimal:0,2'],
+            'gateway' => ['required', Rule::in($this->paymentService->callbackPaymentMethods())],
             'signature' => 'required|string',
         ]);
 
@@ -66,19 +76,20 @@ class PaymentController extends Controller
         $this->authorizeOrderOwner($order);
 
         $validated = $request->validate([
-            'amount' => 'required|numeric|min:1',
+            'amount' => ['required', 'numeric', 'gt:0', 'decimal:0,2'],
             'reason' => 'nullable|string|max:255',
         ]);
 
         try {
             $this->paymentService->requestRefund(
                 $order,
-                (float) $validated['amount'],
+                (string) $validated['amount'],
                 $validated['reason'] ?? null,
-                auth()->id()
+                (int) auth()->id()
             );
 
-            return redirect()->route('order.show', $order)->with('success', 'Hoan tien da duoc ghi nhan.');
+            return redirect()->route('order.show', $order)
+                ->with('success', 'Yêu cầu hoàn tiền đã được gửi và đang chờ duyệt.');
         } catch (\Throwable $exception) {
             return back()->withErrors(['refund' => $exception->getMessage()]);
         }
@@ -89,7 +100,7 @@ class PaymentController extends Controller
         $this->authorizeOrderOwner($order);
 
         try {
-            $this->lifecycleService->transition(
+            $this->lifecycleService->transitionAsCustomer(
                 $order,
                 OrderLifecycleService::STATUS_CANCELLED,
                 'Khach hang huy don',
@@ -107,7 +118,7 @@ class PaymentController extends Controller
         $this->authorizeOrderOwner($order);
 
         try {
-            $this->lifecycleService->transition(
+            $this->lifecycleService->transitionAsCustomer(
                 $order,
                 OrderLifecycleService::STATUS_DELIVERED,
                 'Khach hang xac nhan da nhan hang',
@@ -132,15 +143,7 @@ class PaymentController extends Controller
      */
     private function isValidSignature(array $payload): bool
     {
-        $secret = (string) config('app.key');
-        $plain = implode('|', [
-            $payload['order_number'],
-            $payload['transaction_id'],
-            strtolower((string) $payload['payment_status']),
-            number_format((float) $payload['amount'], 2, '.', ''),
-        ]);
-
-        $expected = hash_hmac('sha256', $plain, $secret);
+        $expected = $this->paymentService->callbackSignature($payload);
 
         return hash_equals($expected, (string) $payload['signature']);
     }

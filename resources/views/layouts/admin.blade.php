@@ -10,18 +10,32 @@
     <body style="background:#f3f5f7; color:#1f2933;">
         <div style="min-height:100vh; display:grid; grid-template-columns:240px minmax(0,1fr);">
             <aside style="background:#1f2933; color:#fff; padding:24px 18px;">
-                <a href="{{ route('admin.dashboard') }}" style="display:block; color:#fff; font-size:1.2rem; font-weight:700; margin-bottom:30px;">Silver Atelier Admin</a>
+                <a href="{{ auth()->user()->hasPermission('dashboard.view') ? route('admin.dashboard') : route('home') }}" style="display:block; color:#fff; font-size:1.2rem; font-weight:700; margin-bottom:30px;">Silver Atelier Admin</a>
                 <nav aria-label="Admin navigation" style="display:grid; gap:8px;">
-                    <a href="{{ route('admin.dashboard') }}" style="padding:10px 12px; border-radius:8px; background:rgba(255,255,255,.12); color:#fff;">Dashboard</a>
-                    <a href="{{ route('admin.orders.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Đơn hàng</a>
-                    <a href="{{ route('admin.users.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Người dùng</a>
-                    <a href="{{ route('admin.products.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Sản phẩm</a>
-                    <a href="{{ route('admin.categories.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Danh mục</a>
-                    <a href="{{ route('admin.collections.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Bộ sưu tập</a>
-                    <a href="{{ route('admin.materials.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Chất liệu</a>
-                    <a href="{{ route('admin.coupons.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Mã giảm giá</a>
-                    <a href="{{ route('admin.shipping.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Vận chuyển</a>
-                    <a href="{{ route('admin.roles.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Phân quyền</a>
+                    @if(auth()->user()->hasPermission('dashboard.view'))
+                        <a href="{{ route('admin.dashboard') }}" style="padding:10px 12px; border-radius:8px; background:rgba(255,255,255,.12); color:#fff;">Dashboard</a>
+                    @endif
+                    @if(auth()->user()->hasPermission('orders.view'))
+                        <a href="{{ route('admin.orders.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Đơn hàng</a>
+                    @endif
+                    @if(auth()->user()->hasPermission('customers.view') || auth()->user()->hasPermission('staff.manage'))
+                        <a href="{{ route('admin.users.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Người dùng</a>
+                    @endif
+                    @if(auth()->user()->hasPermission('products.view'))
+                        <a href="{{ route('admin.products.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Sản phẩm</a>
+                        <a href="{{ route('admin.categories.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Danh mục</a>
+                        <a href="{{ route('admin.collections.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Bộ sưu tập</a>
+                        <a href="{{ route('admin.materials.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Chất liệu</a>
+                    @endif
+                    @if(auth()->user()->hasPermission('coupons.manage'))
+                        <a href="{{ route('admin.coupons.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Mã giảm giá</a>
+                    @endif
+                    @if(auth()->user()->hasPermission('shipping.manage'))
+                        <a href="{{ route('admin.shipping.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Vận chuyển</a>
+                    @endif
+                    @if(auth()->user()->hasPermission('roles.manage'))
+                        <a href="{{ route('admin.roles.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Phân quyền</a>
+                    @endif
                 </nav>
             </aside>
             <div style="min-width:0;">

@@ -5,8 +5,18 @@
         $detailImage = $product->featured_image ?? 'https://images.unsplash.com/photo-1601821765780-3bf8f25f4d74?auto=format&fit=crop&w=900&q=80';
         $salePrice = (float) ($product->sale_price ?? 0);
         $price = (float) ($product->price ?? 0);
-        $displayPrice = $salePrice > 0 ? $salePrice : $price;
-        $comparePrice = $salePrice > 0 ? $price : null;
+        $selectedVariant = $variants->firstWhere('id', (int) old('product_variant_id'))
+            ?? $variants->first(fn ($variant) => (int) $variant->stock > 0)
+            ?? $variants->first();
+        $selectedSalePrice = (float) ($selectedVariant?->sale_price ?? 0);
+        $selectedBasePrice = (float) ($selectedVariant?->price ?? $price);
+        $displayPrice = $selectedVariant
+            ? ($selectedSalePrice > 0 ? $selectedSalePrice : $selectedBasePrice)
+            : ($salePrice > 0 ? $salePrice : $price);
+        $comparePrice = $selectedVariant
+            ? ($selectedSalePrice > 0 ? $selectedBasePrice : null)
+            : ($salePrice > 0 ? $price : null);
+        $selectedStock = (int) ($selectedVariant?->stock ?? $product->stock);
     @endphp
 
     <section class="section-block product-detail">
@@ -50,10 +60,8 @@
                 </div>
 
                 <div class="price-row detail-price">
-                    <strong>{{ number_format($displayPrice, 0, ',', '.') }}đ</strong>
-                    @if ($comparePrice)
-                        <span>{{ number_format($comparePrice, 0, ',', '.') }}đ</span>
-                    @endif
+                    <strong id="selected-product-price">{{ number_format($displayPrice, 0, ',', '.') }}đ</strong>
+                    <span id="selected-product-compare-price" @if(! $comparePrice) hidden @endif>{{ $comparePrice ? number_format($comparePrice, 0, ',', '.').'đ' : '' }}</span>
                 </div>
 
                 <p class="product-summary">{{ $product->short_description ?? 'Những thiết kế bạc thanh lịch, bền đẹp và phù hợp cho mọi phong cách.' }}</p>
@@ -71,8 +79,14 @@
                         <div class="option-pills">
                             @foreach ($variants as $variant)
                                 <label class="option-pill">
-                                    <input type="radio" name="product_variant_id" value="{{ $variant->id }}" form="add-to-cart-form" {{ $loop->first ? 'checked' : '' }} required>
-                                    <span>{{ $variant->size ?? $variant->color ?? $variant->metal_type ?? 'Phiên bản ' . $loop->iteration }}</span>
+                                    <input type="radio" name="product_variant_id" value="{{ $variant->id }}" form="add-to-cart-form"
+                                        data-price="{{ $variant->price }}"
+                                        data-sale-price="{{ $variant->sale_price ?? '' }}"
+                                        data-stock="{{ $variant->stock }}"
+                                        @checked($selectedVariant && $selectedVariant->id === $variant->id)
+                                        @disabled((int) $variant->stock < 1)
+                                        required>
+                                    <span>{{ $variant->size ?? $variant->color ?? $variant->metal_type ?? 'Phiên bản ' . $loop->iteration }}{{ (int) $variant->stock < 1 ? ' — Hết hàng' : '' }}</span>
                                 </label>
                             @endforeach
                         </div>
@@ -84,9 +98,10 @@
                         @csrf
                         <input type="hidden" name="product_id" value="{{ $product->id }}">
                         <label for="quantity" class="sr-only">Số lượng</label>
-                        <input id="quantity" type="number" name="quantity" value="1" min="1" max="{{ $variants->isNotEmpty() ? $variants->max('stock') : $product->stock }}" required style="width:72px; padding:12px; border:1px solid rgba(31,28,26,0.12); border-radius:8px;">
-                        <button type="submit" class="btn btn-primary large">Thêm vào giỏ hàng</button>
+                        <input id="quantity" type="number" name="quantity" value="{{ old('quantity', 1) }}" min="1" max="{{ max(1, $selectedStock) }}" @disabled($selectedStock < 1) required style="width:72px; padding:12px; border:1px solid rgba(31,28,26,0.12); border-radius:8px;">
+                        <button id="add-to-cart-button" type="submit" class="btn btn-primary large" @disabled($selectedStock < 1)>{{ $selectedStock > 0 ? 'Thêm vào giỏ hàng' : 'Hết hàng' }}</button>
                     </form>
+                    <small id="selected-variant-stock" style="display:block; color:#666;">{{ $selectedStock > 0 ? 'Còn '.$selectedStock.' sản phẩm' : 'Phiên bản đã hết hàng' }}</small>
                     @if (auth()->check())
                         @php
                             $inWishlist = auth()->user()->wishlist()->where('product_id', $product->id)->exists();
@@ -108,6 +123,43 @@
                         <a href="{{ route('login') }}" class="btn btn-secondary large">♡ Yêu thích</a>
                     @endif
                 </div>
+
+                @if ($variants->isNotEmpty())
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function () {
+                            const variants = document.querySelectorAll('input[name="product_variant_id"]');
+                            const quantity = document.getElementById('quantity');
+                            const addButton = document.getElementById('add-to-cart-button');
+                            const price = document.getElementById('selected-product-price');
+                            const comparePrice = document.getElementById('selected-product-compare-price');
+                            const stockText = document.getElementById('selected-variant-stock');
+                            const formatMoney = value => new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(value) + 'đ';
+
+                            function applyVariant(variant) {
+                                if (!variant) return;
+
+                                const stock = Number(variant.dataset.stock || 0);
+                                const basePrice = Number(variant.dataset.price || 0);
+                                const salePrice = Number(variant.dataset.salePrice || 0);
+                                price.textContent = formatMoney(salePrice > 0 ? salePrice : basePrice);
+                                comparePrice.hidden = salePrice <= 0;
+                                comparePrice.textContent = salePrice > 0 ? formatMoney(basePrice) : '';
+                                quantity.max = String(Math.max(1, stock));
+                                quantity.disabled = stock < 1;
+                                addButton.disabled = stock < 1;
+                                addButton.textContent = stock > 0 ? 'Thêm vào giỏ hàng' : 'Hết hàng';
+                                stockText.textContent = stock > 0 ? `Còn ${stock} sản phẩm` : 'Phiên bản đã hết hàng';
+
+                                if (stock > 0 && Number(quantity.value) > stock) {
+                                    quantity.value = String(stock);
+                                }
+                            }
+
+                            variants.forEach(variant => variant.addEventListener('change', () => applyVariant(variant)));
+                            applyVariant(document.querySelector('input[name="product_variant_id"]:checked'));
+                        });
+                    </script>
+                @endif
 
                 <ul class="detail-meta">
                     <li>Miễn phí vận chuyển đơn từ 1.000.000đ</li>

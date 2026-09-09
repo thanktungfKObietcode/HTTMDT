@@ -26,6 +26,8 @@ class RolePermissionSeeder extends Seeder
             'orders.view', 'orders.create', 'orders.update', 'orders.delete',
             'customers.view', 'customers.create', 'customers.update', 'customers.delete',
             'settings.view', 'settings.update',
+            'dashboard.view', 'orders.refund', 'coupons.manage', 'shipping.manage',
+            'staff.manage', 'roles.manage',
         ];
 
         foreach ($permissions as $permission) {
@@ -37,8 +39,14 @@ class RolePermissionSeeder extends Seeder
         $vendorRole = Role::where('name', 'vendor')->first();
         $customerRole = Role::where('name', 'customer')->first();
 
-        $adminRole->permissions()->sync(Permission::pluck('id'));
-        $staffRole->permissions()->sync(Permission::whereIn('name', ['products.view', 'orders.view', 'customers.view', 'settings.view'])->pluck('id'));
+        $adminRole->permissions()->sync(Permission::where('guard_name', 'web')->pluck('id'));
+        $staffRole->permissions()->sync(Permission::whereIn('name', [
+            'dashboard.view',
+            'products.view',
+            'orders.view',
+            'customers.view',
+            'settings.view',
+        ])->pluck('id'));
         $vendorRole->permissions()->sync(Permission::whereIn('name', ['products.view', 'products.create', 'products.update'])->pluck('id'));
         $customerRole->permissions()->sync(Permission::whereIn('name', ['products.view'])->pluck('id'));
     }

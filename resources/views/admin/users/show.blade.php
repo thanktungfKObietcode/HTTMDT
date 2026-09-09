@@ -8,13 +8,21 @@
     <div style="display:flex; justify-content:space-between; gap:16px; align-items:center; flex-wrap:wrap;">
         <div><span class="eyebrow">Người dùng</span><h1 style="margin:0;">{{ $user->name }}</h1></div>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
-            @if($user->is_active)
+            @php
+                $actor = auth()->user();
+                $targetIsAdmin = $user->hasRole('admin');
+                $targetIsStaff = $user->hasRole('staff');
+                $canChangeStatus = $actor->hasRole('admin')
+                    || (! $targetIsAdmin && (($targetIsStaff && $actor->hasPermission('staff.manage'))
+                        || (! $targetIsStaff && $actor->hasPermission('customers.update'))));
+            @endphp
+            @if($canChangeStatus && $user->is_active && $user->id !== $actor->id)
                 <form method="POST" action="{{ route('admin.users.deactivate', $user) }}">
                     @csrf
                     <button class="btn btn-secondary" type="submit"
                         onclick="return confirm('Vô hiệu hóa người dùng này?')">Vô hiệu hóa</button>
                 </form>
-            @else
+            @elseif($canChangeStatus && ! $user->is_active)
                 <form method="POST" action="{{ route('admin.users.activate', $user) }}">
                     @csrf
                     <button class="btn btn-primary" type="submit"
@@ -61,6 +69,27 @@
             <p style="margin:4px 0;"><strong>Địa chỉ đang dùng:</strong> {{ $user->addresses->count() }}</p>
         </div>
     </section>
+
+    @if($assignableRoles->isNotEmpty())
+        <section class="filter-box">
+            <h2 style="margin-top:0;">Cập nhật vai trò</h2>
+            <form method="POST" action="{{ route('admin.users.roles.update', $user) }}" style="display:grid; gap:14px;">
+                @csrf
+                @method('PUT')
+                <div style="display:flex; flex-wrap:wrap; gap:14px;">
+                    @foreach($assignableRoles as $role)
+                        <label style="display:flex; align-items:center; gap:6px;">
+                            <input type="checkbox" name="roles[]" value="{{ $role->id }}"
+                                {{ $user->roles->contains('id', $role->id) ? 'checked' : '' }}>
+                            <code>{{ $role->name }}</code>
+                        </label>
+                    @endforeach
+                </div>
+                @error('roles')<span class="admin-error">{{ $message }}</span>@enderror
+                <div><button class="btn btn-primary" type="submit">Lưu vai trò</button></div>
+            </form>
+        </section>
+    @endif
 
     @if($user->addresses->isNotEmpty())
         <section class="filter-box">

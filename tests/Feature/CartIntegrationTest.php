@@ -103,6 +103,7 @@ class CartIntegrationTest extends TestCase
 
         $cart = Cart::create(['session_id' => session()->getId()]);
         session()->put('cart_id', $cart->id);
+        session()->put('cart_guest_session_id', $cart->session_id);
         $item = $cart->items()->create([
             'product_id' => $product->id,
             'quantity' => 1,

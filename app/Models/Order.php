@@ -14,6 +14,7 @@ class Order extends Model
         'user_id',
         'shipping_method_id',
         'order_number',
+        'checkout_token',
         'status',
         'payment_method',
         'payment_status',
@@ -26,6 +27,7 @@ class Order extends Model
         'discount_amount',
         'total_amount',
         'paid_at',
+        'payment_expires_at',
         'shipped_at',
         'delivered_at',
     ];
@@ -36,6 +38,7 @@ class Order extends Model
         'discount_amount' => 'decimal:2',
         'total_amount' => 'decimal:2',
         'paid_at' => 'datetime',
+        'payment_expires_at' => 'datetime',
         'shipped_at' => 'datetime',
         'delivered_at' => 'datetime',
     ];

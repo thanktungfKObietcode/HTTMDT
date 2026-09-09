@@ -25,10 +25,11 @@ class AdminShippingManagementTest extends TestCase
         $this->actingAs($user)->get(route('admin.shipping.index'))->assertForbidden();
     }
 
-    public function test_inactive_admin_gets_403(): void
+    public function test_inactive_admin_is_logged_out_and_redirected(): void
     {
         $admin = $this->createAdmin(false);
-        $this->actingAs($admin)->get(route('admin.shipping.index'))->assertForbidden();
+        $this->actingAs($admin)->get(route('admin.shipping.index'))->assertRedirect(route('login'));
+        $this->assertGuest();
     }
 
     public function test_active_admin_can_access_shipping_list(): void
