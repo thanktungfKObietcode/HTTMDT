@@ -36,6 +36,18 @@ return new class extends Migration
 
     public function down(): void
     {
+        // InnoDB may replace its implicit FK index with our composite index.
+        // Restore FK coverage BEFORE removing that composite during rollback.
+        if (DB::getDriverName() === 'mysql') {
+            $hasOrderIndex = collect(Schema::getIndexes('refunds'))->contains(
+                fn (array $index): bool => $index['name'] !== 'refunds_order_status_index'
+                    && ($index['columns'][0] ?? null) === 'order_id'
+            );
+            if (! $hasOrderIndex) {
+                Schema::table('refunds', fn (Blueprint $table) => $table->index('order_id', 'refunds_order_id_foreign'));
+            }
+        }
+
         Schema::table('refunds', function (Blueprint $table) {
             $table->string('status')->default('pending')->change();
             $table->dropIndex('refunds_order_status_index');
