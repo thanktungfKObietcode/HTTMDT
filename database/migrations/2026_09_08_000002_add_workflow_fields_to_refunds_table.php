@@ -2,12 +2,24 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
     public function up(): void
     {
+        $hasLegacyPending = DB::table('refunds')->where('status', 'pending')->exists();
+        $hasUnknownStatus = DB::table('refunds')
+            ->whereNotIn('status', ['pending', 'requested', 'approved', 'rejected', 'processing', 'completed', 'failed'])
+            ->exists();
+
+        if ($hasLegacyPending || $hasUnknownStatus) {
+            throw new \RuntimeException(
+                'Refund statuses must be reviewed before enabling the requested/approved/processing workflow.'
+            );
+        }
+
         Schema::table('refunds', function (Blueprint $table) {
             $table->string('status')->default('requested')->change();
             $table->foreignId('requested_by')->nullable()->after('payment_transaction_id')->constrained('users')->nullOnDelete();

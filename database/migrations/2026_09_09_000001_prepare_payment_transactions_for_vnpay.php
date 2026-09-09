@@ -9,6 +9,7 @@ return new class extends Migration
 {
     public function up(): void
     {
+        $lengthFunction = DB::connection()->getDriverName() === 'sqlite' ? 'LENGTH' : 'CHAR_LENGTH';
         $hasMissingReference = DB::table('payment_transactions')
             ->where(function ($query): void {
                 $query->whereNull('transaction_id')
@@ -17,14 +18,14 @@ return new class extends Migration
             ->exists();
 
         $hasOversizedReference = DB::table('payment_transactions')
-            ->whereRaw('LENGTH(transaction_id) > 100')
+            ->whereRaw($lengthFunction.'(transaction_id) > 100')
             ->exists();
 
         $hasDuplicateReference = DB::table('payment_transactions')
-            ->select('transaction_id')
+            ->selectRaw('LOWER(TRIM(transaction_id)) AS normalized_reference')
             ->whereNotNull('transaction_id')
-            ->where('transaction_id', '!=', '')
-            ->groupBy('transaction_id')
+            ->whereRaw("TRIM(transaction_id) <> ''")
+            ->groupByRaw('LOWER(TRIM(transaction_id))')
             ->havingRaw('COUNT(*) > 1')
             ->exists();
 
