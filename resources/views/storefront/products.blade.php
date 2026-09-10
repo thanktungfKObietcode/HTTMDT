@@ -63,7 +63,8 @@
                 <div class="product-grid product-grid-compact">
                     @forelse ($products as $product)
                         @php
-                            $image = $product->featured_image ?? 'https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=900&q=80';
+                            $imageRecord = $product->activeImages->first();
+                            $image = $imageRecord?->image_path ?? $product->featured_image ?? 'https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=900&q=80';
                             $salePrice = (float) ($product->sale_price ?? 0);
                             $price = (float) ($product->price ?? 0);
                             $displayPrice = $salePrice > 0 ? $salePrice : $price;
@@ -72,10 +73,11 @@
 
                         <article class="product-card">
                             <div class="product-media">
-                                <img src="{{ $image }}" alt="{{ $product->name }}">
+                                <img src="{{ $image }}" alt="{{ $imageRecord?->alt_text ?: $product->name }}">
                                 @if ($salePrice > 0)
                                     <span class="badge badge-sale">Sale</span>
                                 @endif
+                                @if($product->is_new_arrival)<span class="badge" style="top:42px">Mới</span>@elseif($product->is_bestseller)<span class="badge badge-featured" style="top:42px">Bán chạy</span>@endif
                                 @if (auth()->check())
                                     @php
                                         $inWishlist = auth()->user()->wishlist()->where('product_id', $product->id)->exists();
@@ -110,6 +112,8 @@
                                         <span>{{ number_format($comparePrice, 0, ',', '.') }}đ</span>
                                     @endif
                                 </div>
+                                @php $availableStock = $product->variants->isNotEmpty() ? $product->variants->sum('stock') : $product->stock; @endphp
+                                <small>{{ $availableStock > 0 ? 'Còn hàng' : 'Hết hàng' }}</small>
                             </div>
                         </article>
                     @empty

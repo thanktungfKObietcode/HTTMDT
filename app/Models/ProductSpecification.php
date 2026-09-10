@@ -13,7 +13,11 @@ class ProductSpecification extends Model
         'product_id',
         'label',
         'value',
+        'sort_order',
+        'is_active',
     ];
+
+    protected $casts = ['is_active' => 'boolean'];
 
     public function product(): BelongsTo
     {

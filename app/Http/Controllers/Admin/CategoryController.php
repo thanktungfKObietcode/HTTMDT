@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Category;
+use App\Rules\SafeContentReference;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -83,7 +84,7 @@ class CategoryController extends Controller
                 Rule::notIn([$category?->id]),
             ],
             'description' => 'nullable|string',
-            'image' => 'nullable|string|max:255',
+            'image' => ['nullable', 'string', 'max:2048', new SafeContentReference],
             'is_active' => 'nullable|boolean',
         ]);
     }

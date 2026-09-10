@@ -9,7 +9,7 @@
         <div class="container hero-grid">
             <div class="hero-copy">
                 <span class="eyebrow">Bộ sưu tập mới</span>
-                <h1>Trang sức bạc tinh xảo cho những khoảnh khắc quý giá.</h1>
+                <h1>{{ $homeBanner?->title ?? 'Trang sức bạc tinh xảo cho những khoảnh khắc quý giá.' }}</h1>
                 <p>Mỗi thiết kế được chọn lọc với sự tỉ mỉ, mang lại vẻ đẹp thanh lịch, sang trọng và đầy cảm hứng cho phong cách của bạn.</p>
                 <div class="hero-actions">
                     <a href="{{ url('/san-pham') }}" class="btn btn-primary">Khám phá ngay</a>
@@ -68,7 +68,8 @@
         <div class="container product-grid">
             @foreach ($featuredProducts as $product)
                 @php
-                    $image = $product->featured_image ?? $product->image ?? 'https://images.unsplash.com/photo-1601821765780-3bf8f25f4d74?auto=format&fit=crop&w=900&q=80';
+                    $imageRecord = $product->activeImages->first();
+                    $image = $imageRecord?->image_path ?? $product->featured_image ?? $product->image ?? 'https://images.unsplash.com/photo-1601821765780-3bf8f25f4d74?auto=format&fit=crop&w=900&q=80';
                     $salePrice = (float) ($product->sale_price ?? 0);
                     $price = (float) ($product->price ?? 0);
                     $displayPrice = $salePrice > 0 ? $salePrice : $price;
@@ -77,12 +78,13 @@
 
                 <article class="product-card">
                     <div class="product-media">
-                        <img src="{{ $image }}" alt="{{ $product->name }}">
+                        <img src="{{ $image }}" alt="{{ $imageRecord?->alt_text ?: $product->name }}">
                         @if ($salePrice > 0)
                             <span class="badge badge-sale">Giảm giá</span>
                         @elseif ($product->featured ?? false)
                             <span class="badge badge-featured">Hot</span>
                         @endif
+                        @if($product->is_new_arrival)<span class="badge" style="top:42px">Mới</span>@elseif($product->is_bestseller)<span class="badge badge-featured" style="top:42px">Bán chạy</span>@endif
                         @if (auth()->check())
                             @php
                                 $inWishlist = auth()->user()->wishlist()->where('product_id', $product->id)->exists();
@@ -126,13 +128,13 @@
     <section class="promo-banner" id="collection">
         <div class="container promo-inner">
             <div>
-                <span class="eyebrow">Bộ sưu tập mùa mới</span>
-                <h2>Collection “Moonlight Silver”</h2>
-                <p>Những thiết kế bạc mỏng nhẹ, sáng bóng và mang hơi thở của ánh trăng, phù hợp cho phong cách tối giản nhưng vô cùng sang trọng.</p>
-                <a href="{{ url('/san-pham') }}" class="btn btn-primary">Xem bộ sưu tập</a>
+                <span class="eyebrow">Bộ sưu tập nổi bật</span>
+                <h2>{{ $featuredCollection?->name ?? 'Moonlight Silver' }}</h2>
+                <p>{{ $featuredCollection?->description ?? 'Những thiết kế bạc thanh lịch được tuyển chọn cho phong cách hiện đại.' }}</p>
+                <a href="{{ route('products.index', $featuredCollection ? ['collection' => $featuredCollection->slug] : []) }}" class="btn btn-primary">Xem bộ sưu tập</a>
             </div>
             <div class="promo-visual">
-                <img src="https://images.unsplash.com/photo-1535632787350-4e68ef0ac584?auto=format&fit=crop&w=900&q=80" alt="Moonlight Silver collection">
+                <img src="{{ $featuredCollection?->image ?? 'https://images.unsplash.com/photo-1535632787350-4e68ef0ac584?auto=format&fit=crop&w=900&q=80' }}" alt="{{ $featuredCollection?->name ?? 'Moonlight Silver' }}">
             </div>
         </div>
     </section>

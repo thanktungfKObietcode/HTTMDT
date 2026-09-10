@@ -5,6 +5,7 @@ use App\Models\Category;
 use App\Models\Banner;
 use App\Models\BlogPost;
 use App\Models\Product;
+use App\Models\Collection;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -13,24 +14,37 @@ Route::get('/', function () {
         ? $rootCategory->children()->where('is_active', true)->get()
         : Category::where('is_active', true)->limit(4)->get();
 
-    $featuredProducts = Product::with('category')
+    $featuredProducts = Product::with(['category', 'activeImages', 'variants'])
         ->where('is_active', true)
         ->where(function ($query) {
             $query->where('featured', true)
+                ->orWhere('is_new_arrival', true)
+                ->orWhere('is_bestseller', true)
                 ->orWhere('sale_price', '>', 0);
         })
+        ->orderBy('sort_order')
         ->limit(4)
         ->get();
 
     $journalPosts = BlogPost::with('category')
         ->where('is_published', true)
+        ->where(fn ($query) => $query->whereNull('published_at')->orWhere('published_at', '<=', now()))
+        ->where(fn ($query) => $query->whereNull('blog_category_id')->orWhereHas('category', fn ($category) => $category->where('is_active', true)))
         ->latest()
         ->limit(3)
         ->get();
 
+    $featuredCollection = Collection::query()
+        ->where('is_active', true)
+        ->whereHas('products', fn ($query) => $query->where('is_active', true))
+        ->latest()
+        ->first();
+
     $banners = Banner::where('is_active', true)
         ->where('position', 'home')
-        ->latest()
+        ->where(fn ($query) => $query->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
+        ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>', now()))
+        ->orderBy('sort_order')
         ->get();
 
     return view('storefront.home', [
@@ -39,6 +53,7 @@ Route::get('/', function () {
         'featuredProducts' => $featuredProducts,
         'journalPosts' => $journalPosts,
         'banners' => $banners,
+        'featuredCollection' => $featuredCollection,
     ]);
 })->name('home');
 
@@ -72,6 +87,12 @@ Route::get('/', function () {
         Route::get('/products/{product}/edit', [\App\Http\Controllers\Admin\ProductController::class, 'edit'])->middleware('permission:products.update')->name('products.edit');
         Route::put('/products/{product}', [\App\Http\Controllers\Admin\ProductController::class, 'update'])->middleware('permission:products.update')->name('products.update');
         Route::delete('/products/{product}', [\App\Http\Controllers\Admin\ProductController::class, 'destroy'])->middleware('permission:products.delete')->name('products.destroy');
+        Route::post('/products/{product}/images', [\App\Http\Controllers\Admin\ProductContentController::class, 'storeImage'])->middleware('permission:products.update')->name('products.images.store');
+        Route::put('/products/{product}/images/{image}', [\App\Http\Controllers\Admin\ProductContentController::class, 'updateImage'])->middleware('permission:products.update')->name('products.images.update');
+        Route::delete('/products/{product}/images/{image}', [\App\Http\Controllers\Admin\ProductContentController::class, 'destroyImage'])->middleware('permission:products.update')->name('products.images.destroy');
+        Route::post('/products/{product}/specifications', [\App\Http\Controllers\Admin\ProductContentController::class, 'storeSpecification'])->middleware('permission:products.update')->name('products.specifications.store');
+        Route::put('/products/{product}/specifications/{specification}', [\App\Http\Controllers\Admin\ProductContentController::class, 'updateSpecification'])->middleware('permission:products.update')->name('products.specifications.update');
+        Route::delete('/products/{product}/specifications/{specification}', [\App\Http\Controllers\Admin\ProductContentController::class, 'destroySpecification'])->middleware('permission:products.update')->name('products.specifications.destroy');
         Route::get('/products/{product}/variants', [\App\Http\Controllers\Admin\ProductVariantController::class, 'index'])->middleware('permission:products.view')->name('products.variants.index');
         Route::get('/products/{product}/variants/create', [\App\Http\Controllers\Admin\ProductVariantController::class, 'create'])->middleware('permission:products.create')->name('products.variants.create');
         Route::post('/products/{product}/variants', [\App\Http\Controllers\Admin\ProductVariantController::class, 'store'])->middleware('permission:products.create')->name('products.variants.store');
@@ -115,6 +136,12 @@ Route::get('/', function () {
         Route::get('/roles', [\App\Http\Controllers\Admin\RoleController::class, 'index'])->middleware('permission:roles.manage')->name('roles.index');
         Route::get('/roles/{role}', [\App\Http\Controllers\Admin\RoleController::class, 'show'])->middleware('permission:roles.manage')->name('roles.show');
         Route::put('/roles/{role}/permissions', [\App\Http\Controllers\Admin\RoleController::class, 'updatePermissions'])->middleware('permission:roles.manage')->name('roles.permissions.update');
+        Route::resource('blog-posts', \App\Http\Controllers\Admin\BlogPostController::class)->except(['show', 'destroy'])->middleware('permission:content.manage');
+        Route::resource('blog-categories', \App\Http\Controllers\Admin\BlogCategoryController::class)->only(['index', 'store', 'update', 'destroy'])->middleware('permission:content.manage');
+        Route::resource('banners', \App\Http\Controllers\Admin\BannerController::class)->except('show')->middleware('permission:content.manage');
+        Route::resource('showrooms', \App\Http\Controllers\Admin\ShowroomController::class)->except('show')->middleware('permission:content.manage');
+        Route::resource('contact-messages', \App\Http\Controllers\Admin\ContactMessageController::class)->only(['index', 'show', 'update'])->middleware('permission:content.manage');
+        Route::resource('newsletter-subscribers', \App\Http\Controllers\Admin\NewsletterSubscriberController::class)->only(['index', 'update'])->middleware('permission:content.manage');
     });
 
 Route::get('/san-pham', [ProductController::class, 'index'])->name('products.index');

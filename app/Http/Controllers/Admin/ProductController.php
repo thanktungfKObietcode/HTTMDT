@@ -8,6 +8,7 @@ use App\Models\Collection;
 use App\Models\Material;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Rules\SafeContentReference;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -60,7 +61,7 @@ class ProductController extends Controller
     public function edit(Product $product): View
     {
         return view('admin.products.edit', array_merge($this->formData(), [
-            'product' => $product->load('collections'),
+            'product' => $product->load(['collections', 'images', 'specifications']),
         ]));
     }
 
@@ -111,9 +112,12 @@ class ProductController extends Controller
             'description' => 'nullable|string',
             'price' => 'required|numeric|min:0',
             'sale_price' => 'nullable|numeric|min:0|lte:price',
-            'featured_image' => 'nullable|string|max:255',
+            'featured_image' => ['nullable', 'string', 'max:2048', new SafeContentReference],
             'stock' => 'required|integer|min:0',
             'featured' => 'nullable|boolean',
+            'is_new_arrival' => 'nullable|boolean',
+            'is_bestseller' => 'nullable|boolean',
+            'sort_order' => 'nullable|integer|min:0|max:4294967295',
             'is_active' => 'nullable|boolean',
             'collection_ids' => 'nullable|array',
             'collection_ids.*' => 'integer|exists:collections,id',
@@ -123,6 +127,9 @@ class ProductController extends Controller
     private function productAttributes(array $validated): array
     {
         $validated['featured'] = (bool) ($validated['featured'] ?? false);
+        $validated['is_new_arrival'] = (bool) ($validated['is_new_arrival'] ?? false);
+        $validated['is_bestseller'] = (bool) ($validated['is_bestseller'] ?? false);
+        $validated['sort_order'] = (int) ($validated['sort_order'] ?? 0);
         $validated['is_active'] = (bool) ($validated['is_active'] ?? false);
         unset($validated['collection_ids']);
 

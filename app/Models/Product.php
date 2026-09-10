@@ -21,6 +21,9 @@ class Product extends Model
         'sku',
         'featured_image',
         'featured',
+        'is_new_arrival',
+        'is_bestseller',
+        'sort_order',
         'is_active',
         'stock',
         'views',
@@ -34,6 +37,8 @@ class Product extends Model
         'price' => 'decimal:2',
         'sale_price' => 'decimal:2',
         'featured' => 'boolean',
+        'is_new_arrival' => 'boolean',
+        'is_bestseller' => 'boolean',
         'is_active' => 'boolean',
     ];
 
@@ -57,7 +62,15 @@ class Product extends Model
 
     public function images(): HasMany
     {
-        return $this->hasMany(ProductImage::class)->orderBy('sort_order');
+        return $this->hasMany(ProductImage::class)
+            ->orderByDesc('is_primary')
+            ->orderBy('sort_order')
+            ->orderBy('id');
+    }
+
+    public function activeImages(): HasMany
+    {
+        return $this->images()->where('is_active', true);
     }
 
     public function variants(): HasMany
@@ -67,7 +80,14 @@ class Product extends Model
 
     public function specifications(): HasMany
     {
-        return $this->hasMany(ProductSpecification::class);
+        return $this->hasMany(ProductSpecification::class)
+            ->orderBy('sort_order')
+            ->orderBy('id');
+    }
+
+    public function activeSpecifications(): HasMany
+    {
+        return $this->specifications()->where('is_active', true);
     }
 
     public function reviews(): HasMany

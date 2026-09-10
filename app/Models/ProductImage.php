@@ -12,9 +12,13 @@ class ProductImage extends Model
     protected $fillable = [
         'product_id',
         'image_path',
+        'alt_text',
         'is_primary',
+        'is_active',
         'sort_order',
     ];
+
+    protected $casts = ['is_primary' => 'boolean', 'is_active' => 'boolean'];
 
     public function product(): BelongsTo
     {

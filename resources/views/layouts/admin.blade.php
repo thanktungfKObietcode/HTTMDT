@@ -33,6 +33,14 @@
                     @if(auth()->user()->hasPermission('shipping.manage'))
                         <a href="{{ route('admin.shipping.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Vận chuyển</a>
                     @endif
+                    @if(auth()->user()->hasPermission('content.manage'))
+                        <span style="padding:12px 12px 2px; color:#aeb8c2; font-size:.75rem; text-transform:uppercase;">Nội dung</span>
+                        <a href="{{ route('admin.blog-posts.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Bài viết</a>
+                        <a href="{{ route('admin.banners.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Banner</a>
+                        <a href="{{ route('admin.showrooms.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Showroom</a>
+                        <a href="{{ route('admin.contact-messages.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Liên hệ</a>
+                        <a href="{{ route('admin.newsletter-subscribers.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Newsletter</a>
+                    @endif
                     @if(auth()->user()->hasPermission('roles.manage'))
                         <a href="{{ route('admin.roles.index') }}" style="padding:10px 12px; border-radius:8px; color:#fff;">Phân quyền</a>
                     @endif

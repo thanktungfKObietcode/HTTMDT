@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Collection;
+use App\Rules\SafeContentReference;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -65,7 +66,7 @@ class CollectionController extends Controller
             'name' => 'required|string|max:255',
             'slug' => ['required', 'string', 'max:255', Rule::unique('collections', 'slug')->ignore($collection?->id)],
             'description' => 'nullable|string',
-            'image' => 'nullable|string|max:255',
+            'image' => ['nullable', 'string', 'max:2048', new SafeContentReference],
             'is_active' => 'nullable|boolean',
         ]);
     }

@@ -15,7 +15,7 @@ class ProductController extends Controller
     public function index(Request $request)
     {
         $query = Product::query()
-            ->with(['category', 'material', 'collections'])
+            ->with(['category', 'material', 'collections', 'activeImages', 'variants'])
             ->where('is_active', true);
 
         if ($request->filled('q')) {
@@ -66,7 +66,7 @@ class ProductController extends Controller
                 $query->orderBy('name', 'asc');
                 break;
             default:
-                $query->latest();
+                $query->orderBy('sort_order')->latest();
                 break;
         }
 
@@ -93,9 +93,9 @@ class ProductController extends Controller
                 'category',
                 'material',
                 'collections',
-                'images',
+                'activeImages',
                 'variants',
-                'specifications',
+                'activeSpecifications',
                 'reviews.user',
             ])
             ->where('slug', $slug)
@@ -105,7 +105,7 @@ class ProductController extends Controller
         $product->increment('views');
 
         $relatedProducts = Product::query()
-            ->with('category')
+            ->with(['category', 'activeImages', 'variants'])
             ->where('is_active', true)
             ->where('id', '!=', $product->id)
             ->when($product->category_id, function ($builder) use ($product) {
@@ -134,9 +134,9 @@ class ProductController extends Controller
             'relatedProducts' => $relatedProducts,
             'averageRating' => $averageRating ? round((float) $averageRating, 1) : ($product->average_rating ?: 0),
             'reviews' => $product->reviews()->with('user')->where('is_active', true)->latest()->get(),
-            'specifications' => $product->specifications()->get(),
+            'specifications' => $product->activeSpecifications()->get(),
             'variants' => $product->variants()->where('is_active', true)->get(),
-            'images' => $product->images()->orderBy('sort_order')->get(),
+            'images' => $product->activeImages()->get(),
             'canReview' => $canReview,
             'existingReview' => $existingReview,
         ]);

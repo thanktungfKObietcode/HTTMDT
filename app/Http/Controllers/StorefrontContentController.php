@@ -19,6 +19,8 @@ class StorefrontContentController extends Controller
         $category = $request->input('category');
         $posts = BlogPost::with('category')
             ->where('is_published', true)
+            ->where(fn ($query) => $query->whereNull('published_at')->orWhere('published_at', '<=', now()))
+            ->where(fn ($query) => $query->whereNull('blog_category_id')->orWhereHas('category', fn ($categoryQuery) => $categoryQuery->where('is_active', true)))
             ->when($category, fn ($query) => $query->whereHas('category', fn ($categoryQuery) => $categoryQuery->where('slug', $category)))
             ->latest()
             ->paginate(9)
@@ -27,7 +29,7 @@ class StorefrontContentController extends Controller
         return view('storefront.blog.index', [
             'pageTitle' => 'Tin tức | Silver Atelier',
             'posts' => $posts,
-            'categories' => BlogCategory::orderBy('name')->get(),
+            'categories' => BlogCategory::where('is_active', true)->orderBy('name')->get(),
             'selectedCategory' => $category,
         ]);
     }
@@ -37,10 +39,14 @@ class StorefrontContentController extends Controller
         $post = BlogPost::with('category')
             ->where('slug', $slug)
             ->where('is_published', true)
+            ->where(fn ($query) => $query->whereNull('published_at')->orWhere('published_at', '<=', now()))
+            ->where(fn ($query) => $query->whereNull('blog_category_id')->orWhereHas('category', fn ($categoryQuery) => $categoryQuery->where('is_active', true)))
             ->firstOrFail();
 
         $relatedPosts = BlogPost::with('category')
             ->where('is_published', true)
+            ->where(fn ($query) => $query->whereNull('published_at')->orWhere('published_at', '<=', now()))
+            ->where(fn ($query) => $query->whereNull('blog_category_id')->orWhereHas('category', fn ($categoryQuery) => $categoryQuery->where('is_active', true)))
             ->where('id', '!=', $post->id)
             ->when($post->blog_category_id, fn ($query) => $query->where('blog_category_id', $post->blog_category_id))
             ->latest()

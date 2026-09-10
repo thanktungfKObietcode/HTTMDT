@@ -2,7 +2,8 @@
 
 @section('content')
     @php
-        $detailImage = $product->featured_image ?? 'https://images.unsplash.com/photo-1601821765780-3bf8f25f4d74?auto=format&fit=crop&w=900&q=80';
+        $detailImageRecord = $images->first();
+        $detailImage = $detailImageRecord?->image_path ?? $product->featured_image ?? 'https://images.unsplash.com/photo-1601821765780-3bf8f25f4d74?auto=format&fit=crop&w=900&q=80';
         $salePrice = (float) ($product->sale_price ?? 0);
         $price = (float) ($product->price ?? 0);
         $selectedVariant = $variants->firstWhere('id', (int) old('product_variant_id'))
@@ -38,11 +39,11 @@
 
             <div class="gallery-panel">
                 <div class="main-gallery">
-                    <img src="{{ $detailImage }}" alt="{{ $product->name }}">
+                    <img id="product-main-image" src="{{ $detailImage }}" alt="{{ $detailImageRecord?->alt_text ?: $product->name }}">
                 </div>
                 <div class="thumb-row">
                     @forelse ($images as $image)
-                        <img src="{{ $image->image_path }}" alt="{{ $product->name }} thumbnail">
+                        <button type="button" class="product-thumb" data-image="{{ $image->image_path }}" data-alt="{{ $image->alt_text ?: $product->name }}" style="border:0;background:transparent;padding:0"><img src="{{ $image->image_path }}" alt="{{ $image->alt_text ?: $product->name }}"></button>
                     @empty
                         <img src="{{ $detailImage }}" alt="{{ $product->name }} thumbnail">
                         <img src="https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=600&q=80" alt="thumbnail 2">
@@ -65,6 +66,9 @@
                 </div>
 
                 <p class="product-summary">{{ $product->short_description ?? 'Những thiết kế bạc thanh lịch, bền đẹp và phù hợp cho mọi phong cách.' }}</p>
+
+                @if($product->collections->isNotEmpty())<p><strong>Bộ sưu tập:</strong> {{ $product->collections->pluck('name')->join(', ') }}</p>@endif
+                @if($product->is_new_arrival || $product->is_bestseller)<p>@if($product->is_new_arrival)<span class="badge">Hàng mới</span>@endif @if($product->is_bestseller)<span class="badge badge-featured">Bán chạy</span>@endif</p>@endif
 
                 <div class="variant-block">
                     <span class="label">Chất liệu</span>
@@ -169,6 +173,16 @@
             </div>
         </div>
     </section>
+
+    <script>
+        document.querySelectorAll('.product-thumb').forEach(function (button) {
+            button.addEventListener('click', function () {
+                const main = document.getElementById('product-main-image');
+                main.src = button.dataset.image;
+                main.alt = button.dataset.alt;
+            });
+        });
+    </script>
 
     <section class="section-block extra-section">
         <div class="container details-tabs">

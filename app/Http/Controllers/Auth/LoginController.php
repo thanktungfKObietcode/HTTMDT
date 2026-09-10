@@ -97,6 +97,7 @@ class LoginController extends Controller
             'orders.view' => 'admin.orders.index',
             'products.view' => 'admin.products.index',
             'products.create' => 'admin.products.create',
+            'content.manage' => 'admin.blog-posts.index',
             'customers.view' => 'admin.users.index',
             'staff.manage' => 'admin.users.index',
             'coupons.manage' => 'admin.coupons.index',
