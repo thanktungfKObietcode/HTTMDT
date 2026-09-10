@@ -118,6 +118,63 @@ This continuation supersedes the earlier MySQL/concurrency execution blockers, n
 - No live VNPay transaction, QueryDR request or refund API call was performed. QueryDR in worker processes used HTTP fakes with stray-request prevention. Existing missing sandbox credentials/HTTPS callback acceptance remains outstanding.
 - Remaining operational checks: real sandbox acceptance with public HTTPS Return/IPN, environment-specific preflight/migration/data validation, approved timezone configuration, monitoring/alerts and smoke checks. Re-run the guarded schema/races if deploying a different server version. No Phase 6D-3 work was started.
 
+## Phase 6D-3: runtime security and production operations
+
+This phase hardens the application boundary; it does **not** enable a real production gateway. VNPay payment and QueryDR endpoint allow-lists remain sandbox-only. SANDBOX TRANSACTION: NOT EXECUTED. VNPAY REFUND: NOT IMPLEMENTED.
+
+### Runtime configuration and secrets
+
+- Set `APP_ENV=production`, `APP_DEBUG=false`, and an HTTPS `APP_URL` for deployed instances. The production request guard fails with a generic 503 for unsafe runtime configuration, and rejects HTTP or mismatched Host requests before routing/session/database work. Local HTTP development is unchanged.
+- `SESSION_SECURE_COOKIE` defaults to true in production. Require Secure, `SESSION_HTTP_ONLY=true` and `SESSION_SAME_SITE=lax` (Strict is accepted but may lose the session on the cross-site Return). Use persistent `SESSION_DRIVER` and `CACHE_STORE`; array/null cache and array sessions are not production-safe. Multi-node instances need shared stores. Queue worker requirements remain application-specific; expiry is a scheduled foreground command, not a queued job. Preflight warns about `QUEUE_CONNECTION=sync`.
+- Supply `APP_KEY`, `VNPAY_TMN_CODE`, `VNPAY_HASH_SECRET` and database credentials through the deployment secret mechanism. Do not put credentials into tickets, source, browser templates, command output or logs. VNPay signing uses its dedicated secret, never APP_KEY. The legacy APP_KEY-signed simulated callback returns 404 in production.
+- Keep `VNPAY_ENABLED=false` until approved readiness/acceptance checks pass. Required enabled-gateway settings remain `VNPAY_PAYMENT_URL`, `VNPAY_RETURN_URL`, `VNPAY_IPN_URL`, `VNPAY_VERSION=2.1.0`, `VNPAY_CURRENCY=VND`, `VNPAY_LOCALE`, `VNPAY_ORDER_TYPE`, `VNPAY_TIMEZONE=Asia/Ho_Chi_Minh`, `VNPAY_QUERY_URL`, and `VNPAY_QUERY_SERVER_IP`. Do not infer production endpoints from sandbox URLs.
+- Production Return and IPN URLs must exactly match `APP_URL` plus `/thanh-toan/vnpay/return` and `/thanh-toan/vnpay/ipn`. Both are public GET endpoints. Return displays state only; it never settles. IPN verifies signatures and protocol fields before the shared transactional settlement path. QueryDR uses persisted attempt identity, a separately signed/verified protocol, a configured server IP, a 3-second connection timeout and a bounded request timeout (default 10 seconds). It follows no HTTP redirects and has no automatic network retry loop. It never performs HTTP under financial locks.
+- Configure `VNPAY_QUERY_SERVER_IP` to the merchant server address required by VNPay, including the correct public egress identity where applicable; syntax checks cannot prove provider registration or reachability. Use UTC application/database sessions as described above; do not automatically convert historical timestamps.
+
+### HTTPS, proxies, cookies and headers
+
+`TRUSTED_PROXIES` accepts only explicit IP addresses/CIDRs; wildcard, REMOTE_ADDR and catch-all /0 ranges are refused. The request middleware reads config after bootstrap and does not inherit Host-based platform wildcard trust. Only forwarded client IP, scheme and port are trusted; forwarded Host is ignored. Configure the reverse proxy to preserve the public Host and overwrite incoming forwarding headers, and restrict direct origin access at the firewall. Validate the real proxy path during smoke testing. See [Laravel trusted proxies](https://laravel.com/docs/13.x/requests#configuring-trusted-proxies).
+
+Application responses include `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, and a referrer policy. Payment/order/refund responses use `no-referrer` and `Cache-Control: no-store, private`. Production HTTPS responses include HSTS `max-age=31536000`, without includeSubDomains/preload; local HTTP receives no HSTS. Confirm long-lived HTTPS support before serving this header.
+
+TLS certificates/protocols, HTTP-to-HTTPS redirects, origin access control, access-log redaction and volumetric protection belong at the proxy/platform. Never log payment query strings, full signed redirect URLs, callback bodies, cookies or Authorization headers. No strict CSP was added: existing Blade inline scripts/styles and asset origins require a separate inventory and report-only trial before enforcement. Do not deploy an untested proxy CSP that breaks checkout or VNPay navigation.
+
+### Abuse controls and safe diagnostics
+
+- Checkout POST and VNPay retry share 10 requests/minute per authenticated customer, independent of supplied order IDs. Return allows 60/minute per IP. Admin reconciliation allows 5/minute per admin, in addition to auth/active/backoffice/admin/orders.update and owner-order/transaction scoping.
+- IPN has **no IP throttle**: shared gateway infrastructure and legitimate retries must not be rejected by a customer limiter. Instead it uses signature checks, idempotency, financial locks and bounded input: Return/IPN reject queries larger than 16 KiB or more than 64 parameters before journal/settlement work. Configure matching edge request-size limits and monitor abuse without blindly blocking legitimate gateway IPs.
+- Customer/admin POST CSRF protection stays in place. The existing narrow legacy simulation exemption was not expanded. GET Return/IPN need no CSRF exemption.
+- Payment controllers display generic safe failures instead of raw exception messages. Unexpected payment-route exceptions are logged by class/category only, without traces, SQL bindings, previous exceptions, request data or secrets. Validation messages remain normal field-level errors. Future legacy simulation receipts retain only five validated non-signature fields; existing historical receipts were not modified and may need a separately authorized sensitive-data review.
+- The append-only gateway journal remains the financial audit source; required settlement outcomes stay atomic. Monitor `reconciliation_required`, terminal-order success, second success, amount/identity conflicts, invalid signatures, repeated QueryDR failures and missing IPNs. Use safe attempt/order identifiers and aggregate counts, not signed payloads. Set non-debug, retained/rotated logs (for example the existing daily channel), monitor disk/collector health and restrict log access.
+
+### Expiry scheduling
+
+The registered task is `payments:expire-vnpay --limit=25`, every five minutes, production-only and opt-in via `VNPAY_EXPIRY_SCHEDULER_ENABLED=true`. It requires enabled/configured QueryDR, safe production runtime settings and shared database/Redis cache. `withoutOverlapping()` uses the default 24-hour mutex expiry; `onOneServer()` prevents the same due task running on multiple scheduler nodes sharing that cache. Neither option replaces the existing row-lock/idempotency protections.
+
+After deployment review, configure the server scheduler (not performed by this phase). A typical Linux cron entry, adjusted to the actual release path/runtime, is:
+
+```cron
+* * * * * cd /path/to/approved-release && php artisan schedule:run >> /var/log/silver-atelier-scheduler.log 2>&1
+```
+
+Use the platform-equivalent scheduler on Windows/managed hosting. Verify `php artisan schedule:list`, the heartbeat, cache connectivity and redacted batch output. A dry run is `php artisan payments:expire-vnpay --dry-run --limit=25`. Do not execute expiry against development data as a smoke test. The task does not run in maintenance mode. Release a stale scheduler mutex only after verifying that the original worker has stopped; never clear locks blindly.
+
+Expiry logs counts for scanned/cancelled/skipped-paid/skipped-conflict/failed and the last processed ID. Initial database lookup failure and scheduler command failure produce safe operational errors. Alert on failures, conflicts, stale pending orders and a missing heartbeat. Repeated conflicts among the oldest 25 candidates can delay later candidates: operators must review them and use the existing `--after-id=<last_id>` pagination for approved manual batches. Scheduling intentionally does not bypass ambiguous payment state or introduce a new cursor/queue architecture.
+
+### Preflight and go-live gate
+
+`payments:deployment-check` and `--json` remain read-only: no migrations, row writes, network requests or financial actions. They now report unsafe production debug/HTTPS/cookies/proxy/store settings, enabled-gateway configuration, QueryDR readiness, pending migration records, scheduler/cache requirements and logging/queue warnings, in addition to existing data/schema/engine/timezone checks. Connection failures return generic machine-readable FAIL output, not credentials. Static checks cannot prove cron execution, shared cache topology, public HTTPS reachability or provider registration.
+
+Follow the backup, preflight, approved migration, cache rebuild and rollback procedure below. Smoke-test the deployed proxy path, cookie flags, security headers, authorization, CSRF and throttles; confirm no IPN IP throttle. Perform sandbox acceptance using the existing checklist, including Return-before-IPN and IPN-before-Return, duplicates, QueryDR and terminal conflicts. Do not enable production payment acceptance until these checks, provider-approved endpoint/merchant configuration, alerts, timezone/data review and human approval are complete. Real VNPay refund execution remains fail-closed until separately scoped Phase 6E work and acceptance.
+
+Scheduler semantics follow [Laravel scheduling](https://laravel.com/docs/13.x/scheduling#preventing-task-overlaps); this documentation does not claim that a server cron or sandbox transaction was executed.
+
+### Phase 6D-3 validation record
+
+Starting checkpoint: `8f77b41 checkpoint-phase-6d2-mysql-concurrency-validation`; initial tracked worktree clean, with the three existing helper text files preserved. Added 37 hardening regressions. The related targeted group passed 243 tests / 1539 assertions; the final focused hardening plus payment-lifecycle group passed 61 / 516. The normal full suite was run once: **535 passed, 7 intentionally skipped MySQL tests, 2537 assertions, 0 failures** (542 discovered), versus 498 passed / 7 skipped / 2121 assertions before this phase.
+
+No MySQL/concurrency rerun was required: financial state transitions, locking, transaction ordering, expiry decisions and inventory algorithms were unchanged. The only PaymentService edit redacts the signature from legacy simulation receipt metadata. No development database writes, environment-file changes, server scheduler configuration, live gateway calls, production gateway enablement or refund API implementation occurred. Proxy/server smoke tests, public HTTPS/provider registration and sandbox acceptance still require deployment-operator validation.
+
 ## Deployment sequence
 
 1. Take and verify a restorable database backup.

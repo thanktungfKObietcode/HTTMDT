@@ -13,7 +13,14 @@ class PaymentDeploymentCheck extends Command
 
     public function handle(PaymentDeploymentPreflight $preflight): int
     {
-        $result = $preflight->run();
+        try {
+            $result = $preflight->run();
+        } catch (\Throwable) {
+            // Connection exceptions can contain credentials; JSON must remain parseable.
+            $result = ['verdict' => 'FAIL', 'summary' => ['pass' => 0, 'warning' => 0, 'fail' => 1],
+                'checks' => [['id' => 'preflight_unavailable', 'severity' => 'fail', 'count' => 1,
+                    'message' => 'Read-only inspection failed. Check connectivity and schema without printing credentials.']]];
+        }
         if ($this->option('json')) {
             $this->line(json_encode($result, JSON_THROW_ON_ERROR));
         } else {

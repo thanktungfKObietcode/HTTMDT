@@ -514,7 +514,9 @@ class PaymentService
                 $transaction->paid_at = now();
             }
             $transaction->payload = array_merge($transaction->payload ?? [], [
-                'callback_payload' => $payload,
+                'callback_payload' => array_intersect_key($payload, array_flip([
+                    'order_number', 'transaction_id', 'payment_status', 'amount', 'gateway',
+                ])),
                 'callback_at' => now()->toDateTimeString(),
             ]);
             $transaction->save();

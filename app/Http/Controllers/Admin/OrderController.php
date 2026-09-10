@@ -95,7 +95,7 @@ class OrderController extends Controller
 
             return back()->with('success', 'Trạng thái đơn hàng đã được cập nhật.');
         } catch (\Throwable $exception) {
-            return back()->withErrors(['status' => $exception->getMessage()]);
+            return back()->withErrors(['status' => \App\Support\PaymentError::message($exception)]);
         }
     }
 
@@ -114,7 +114,7 @@ class OrderController extends Controller
 
             return back()->with('success', 'Yêu cầu hoàn tiền đã được duyệt.');
         } catch (\Throwable $exception) {
-            return back()->withErrors(['refund' => $exception->getMessage()]);
+            return back()->withErrors(['refund' => \App\Support\PaymentError::message($exception)]);
         }
     }
 
@@ -133,7 +133,7 @@ class OrderController extends Controller
 
             return back()->with('success', 'Yêu cầu hoàn tiền đã bị từ chối.');
         } catch (\Throwable $exception) {
-            return back()->withErrors(['refund' => $exception->getMessage()]);
+            return back()->withErrors(['refund' => \App\Support\PaymentError::message($exception)]);
         }
     }
 
@@ -156,7 +156,7 @@ class OrderController extends Controller
 
             return back()->with('success', $message);
         } catch (\Throwable $exception) {
-            return back()->withErrors(['refund' => $exception->getMessage()]);
+            return back()->withErrors(['refund' => \App\Support\PaymentError::message($exception)]);
         }
     }
 

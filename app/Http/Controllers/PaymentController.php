@@ -30,7 +30,7 @@ class PaymentController extends Controller
                 : $this->paymentService->createOrGetPendingTransaction($order);
         } catch (\Throwable $exception) {
             return redirect()->route('order.show', $order)
-                ->withErrors(['payment' => $exception->getMessage()]);
+                ->withErrors(['payment' => \App\Support\PaymentError::message($exception)]);
         }
 
         return view('storefront.payment', [
@@ -43,6 +43,8 @@ class PaymentController extends Controller
 
     public function callback(Request $request): JsonResponse
     {
+        // The APP_KEY-based simulation is never a production settlement endpoint.
+        abort_if(config('app.env') === 'production', 404);
         $payload = $request->validate([
             'order_number' => 'required|string',
             'transaction_id' => 'required|string',
@@ -66,7 +68,7 @@ class PaymentController extends Controller
             ]);
         } catch (\Throwable $exception) {
             return response()->json([
-                'message' => $exception->getMessage(),
+                'message' => \App\Support\PaymentError::message($exception),
             ], 422);
         }
     }
@@ -91,7 +93,7 @@ class PaymentController extends Controller
             return redirect()->route('order.show', $order)
                 ->with('success', 'Yêu cầu hoàn tiền đã được gửi và đang chờ duyệt.');
         } catch (\Throwable $exception) {
-            return back()->withErrors(['refund' => $exception->getMessage()]);
+            return back()->withErrors(['refund' => \App\Support\PaymentError::message($exception)]);
         }
     }
 
@@ -109,7 +111,7 @@ class PaymentController extends Controller
 
             return redirect()->route('order.show', $order)->with('success', 'Don hang da duoc huy.');
         } catch (\Throwable $exception) {
-            return back()->withErrors(['status' => $exception->getMessage()]);
+            return back()->withErrors(['status' => \App\Support\PaymentError::message($exception)]);
         }
     }
 
@@ -127,7 +129,7 @@ class PaymentController extends Controller
 
             return redirect()->route('order.show', $order)->with('success', 'Don hang da duoc xac nhan giao thanh cong.');
         } catch (\Throwable $exception) {
-            return back()->withErrors(['status' => $exception->getMessage()]);
+            return back()->withErrors(['status' => \App\Support\PaymentError::message($exception)]);
         }
     }
 

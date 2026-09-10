@@ -117,6 +117,7 @@ final class PaymentDeploymentPreflight
 
         $this->eventChecks($checks, $length);
         $this->mysqlChecks($checks);
+        $this->configurationChecks($checks);
 
         return $this->result($checks);
     }
@@ -178,6 +179,56 @@ final class PaymentDeploymentPreflight
     private function groupCount($query): int
     {
         return (int) DB::query()->fromSub($query, 'preflight_groups')->count();
+    }
+
+    private function configurationChecks(array &$checks): void
+    {
+        $security = app(\App\Support\PaymentSecurityConfiguration::class);
+        foreach ($security->failures() as $id => $message) {
+            $this->check($checks, $id, 'fail', 1, $message);
+        }
+        if (config('vnpay.enabled') === true) {
+            try {
+                app(\App\Contracts\PaymentGateway::class)->assertConfigured();
+                $this->check($checks, 'vnpay_configuration', 'pass', 0, 'Gateway configuration passed local validation; no gateway request was made.');
+            } catch (\Throwable) {
+                $this->check($checks, 'vnpay_configuration', 'fail', 1, 'Enabled VNPay has unsafe or incomplete configuration.');
+            }
+            $this->check($checks, 'vnpay_query_configuration', $security->queryConfigured() ? 'pass' : 'fail',
+                $security->queryConfigured() ? 0 : 1, 'QueryDR requires the approved sandbox endpoint, server IP and bounded timeout.');
+        }
+        if (config('app.env') !== 'production') {
+            return; // Local HTTP, array test stores and debug do not cause production-only failures.
+        }
+        $this->check($checks, 'expiry_scheduler_operations', 'warning', 1,
+            'Verify scheduler cron, heartbeat, bounded batches and shared cache locks; static preflight cannot prove the scheduler is running.');
+        if (config('vnpay.enabled') === true && config('vnpay.expiry_scheduler_enabled') !== true) {
+            $this->check($checks, 'expiry_scheduler_disabled', 'warning', 1, 'Automatic expiry is disabled; an explicit manual operating procedure is required.');
+        }
+        if (config('vnpay.expiry_scheduler_enabled') === true && ! in_array(config('cache.default'), ['database', 'redis'], true)) {
+            $this->check($checks, 'expiry_scheduler_cache', 'fail', 1, 'Scheduled expiry requires shared database or Redis cache.');
+        }
+        if (config('queue.default') === 'sync') {
+            $this->check($checks, 'production_sync_queue', 'warning', 1, 'Sync queue executes work in the request; review worker requirements before adding asynchronous payment tasks.');
+        }
+        $logChannel = (string) config('logging.default');
+        $logChannels = config('logging.channels.'.$logChannel.'.driver') === 'stack'
+            ? (array) config('logging.channels.'.$logChannel.'.channels') : [$logChannel];
+        if (collect($logChannels)->contains(fn ($channel) => $channel === 'null'
+            || config('logging.channels.'.$channel.'.level') === 'debug')) {
+            $this->check($checks, 'production_logging', 'warning', 1, 'Use retained, monitored non-debug logs; suppress query strings and request bodies at the edge.');
+        }
+        foreach ([
+            '2026_09_08_000001_add_checkout_token_to_orders_table',
+            '2026_09_08_000002_add_workflow_fields_to_refunds_table',
+            '2026_09_09_000001_prepare_payment_transactions_for_vnpay',
+            '2026_09_09_000002_create_payment_gateway_events_table',
+        ] as $migration) {
+            if (! Schema::hasTable('migrations') || ! DB::table('migrations')->where('migration', $migration)->exists()) {
+                $this->check($checks, 'pending_'.$migration, config('vnpay.enabled') ? 'fail' : 'warning', 1,
+                    'Required payment migration is pending; apply only during an approved deployment window.');
+            }
+        }
     }
 
     /** @param array<int,array{id:string,severity:string,count:int,message:string}> $checks */

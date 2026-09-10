@@ -57,7 +57,7 @@ class CheckoutController extends Controller
             try {
                 [, $couponDiscount] = $this->resolveCoupon($couponCode, $subtotal);
             } catch (\Throwable $exception) {
-                $couponError = $exception->getMessage();
+                $couponError = \App\Support\PaymentError::message($exception);
             }
         }
 
@@ -239,7 +239,7 @@ class CheckoutController extends Controller
             }
 
             return back()->withErrors([
-                'checkout' => $e->getMessage(),
+                'checkout' => \App\Support\PaymentError::message($e),
             ])->withInput();
         }
     }

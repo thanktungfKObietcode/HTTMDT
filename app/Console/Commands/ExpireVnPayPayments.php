@@ -24,7 +24,13 @@ class ExpireVnPayPayments extends Command
             return self::INVALID;
         }
         $counts = ['scanned' => 0, 'cancelled' => 0, 'skipped_paid' => 0, 'skipped_conflict' => 0, 'failed' => 0];
-        $candidates = $expiry->candidates()->where('id', '>', (int) $after)->limit((int) $limit)->get();
+        try {
+            $candidates = $expiry->candidates()->where('id', '>', (int) $after)->limit((int) $limit)->get();
+        } catch (Throwable) {
+            $this->error('Expiry candidate lookup failed; no cancellation was attempted.');
+            Log::error('VNPay expiry candidate lookup failed.');
+            return self::FAILURE;
+        }
         $lastId = (int) $after;
         foreach ($candidates as $order) {
             $lastId = $order->id;
@@ -40,6 +46,9 @@ class ExpireVnPayPayments extends Command
             }
         }
         $this->line(json_encode($counts + ['last_id' => $lastId, 'dry_run' => (bool) $this->option('dry-run')], JSON_THROW_ON_ERROR));
+        if (! $this->option('dry-run')) {
+            Log::info('VNPay expiry batch completed.', $counts + ['last_id' => $lastId]);
+        }
 
         return $counts['failed'] > 0 ? self::FAILURE : self::SUCCESS;
     }

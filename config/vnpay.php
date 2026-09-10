@@ -18,4 +18,5 @@ return [
     'query_timeout_seconds' => 10,
     'expiry_batch_size' => 25,
     'expiry_max_attempts' => 20,
+    'expiry_scheduler_enabled' => filter_var(env('VNPAY_EXPIRY_SCHEDULER_ENABLED', false), FILTER_VALIDATE_BOOL),
 ];

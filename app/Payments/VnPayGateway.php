@@ -300,6 +300,12 @@ final class VnPayGateway implements PaymentGateway
     /** @return array<string, string> */
     private function validatedSettings(): array
     {
+        $security = new \App\Support\PaymentSecurityConfiguration($this->config);
+        $security->assertSafe();
+        if ($this->config->get('app.env') === 'production'
+            && (! $security->queryConfigured() || ! $security->callbackUrlsMatchApplication())) {
+            throw new RuntimeException('Production VNPay callbacks and QueryDR must be configured before payment acceptance.');
+        }
         if ($this->config->get('vnpay.enabled', false) !== true) {
             throw new RuntimeException('VNPay is disabled.');
         }
@@ -338,7 +344,9 @@ final class VnPayGateway implements PaymentGateway
         }
 
         // Phase 6B accepts sandbox payments only. Production needs a separate review.
-        if (strtolower((string) parse_url($settings['payment_url'], PHP_URL_HOST)) !== 'sandbox.vnpayment.vn') {
+        if (strtolower((string) parse_url($settings['payment_url'], PHP_URL_HOST)) !== 'sandbox.vnpayment.vn'
+            || parse_url($settings['payment_url'], PHP_URL_PATH) !== '/paymentv2/vpcpay.html'
+            || parse_url($settings['payment_url'], PHP_URL_PORT) !== null) {
             throw new RuntimeException('Only the VNPay sandbox payment endpoint is enabled.');
         }
 

@@ -57,7 +57,7 @@ Route::get('/', function () {
         Route::get('/orders/{order}', [\App\Http\Controllers\Admin\OrderController::class, 'show'])->middleware('permission:orders.view')->name('orders.show');
         Route::post('/orders/{order}/status', [\App\Http\Controllers\Admin\OrderController::class, 'updateStatus'])->middleware('permission:orders.update')->name('orders.status');
         Route::post('/orders/{order}/payments/{transaction}/reconcile', \App\Http\Controllers\Admin\VnPayReconciliationController::class)
-            ->middleware(['admin', 'permission:orders.update'])->name('orders.payments.reconcile');
+            ->middleware(['admin', 'permission:orders.update', 'throttle:payment-reconciliation'])->name('orders.payments.reconcile');
         Route::post('/refunds/{refund}/approve', [\App\Http\Controllers\Admin\OrderController::class, 'approveRefund'])->middleware('permission:orders.refund')->name('refunds.approve');
         Route::post('/refunds/{refund}/reject', [\App\Http\Controllers\Admin\OrderController::class, 'rejectRefund'])->middleware('permission:orders.refund')->name('refunds.reject');
         Route::post('/refunds/{refund}/execute', [\App\Http\Controllers\Admin\OrderController::class, 'executeRefund'])->middleware('permission:orders.refund')->name('refunds.execute');
@@ -148,13 +148,13 @@ Route::post('/thanh-toan/callback', [\App\Http\Controllers\PaymentController::cl
     ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class]);
 
 // Account
-Route::get('/thanh-toan/vnpay/return', [\App\Http\Controllers\VnPayController::class, 'returnResult'])->name('vnpay.return');
+Route::get('/thanh-toan/vnpay/return', [\App\Http\Controllers\VnPayController::class, 'returnResult'])->middleware('throttle:payment-return')->name('vnpay.return');
 Route::get('/thanh-toan/vnpay/ipn', [\App\Http\Controllers\VnPayController::class, 'ipn'])->name('vnpay.ipn');
 
 Route::middleware(['auth', 'active'])->group(function () {
-    Route::post('/don-hang/{order}/vnpay', [\App\Http\Controllers\VnPayController::class, 'initiate'])->name('vnpay.initiate');
+    Route::post('/don-hang/{order}/vnpay', [\App\Http\Controllers\VnPayController::class, 'initiate'])->middleware('throttle:payment-initiation')->name('vnpay.initiate');
     Route::get('/thanh-toan', [\App\Http\Controllers\CheckoutController::class, 'index'])->name('checkout.index');
-    Route::post('/thanh-toan', [\App\Http\Controllers\CheckoutController::class, 'store'])->name('checkout.store');
+    Route::post('/thanh-toan', [\App\Http\Controllers\CheckoutController::class, 'store'])->middleware('throttle:payment-initiation')->name('checkout.store');
     Route::get('/don-hang/{order}', [\App\Http\Controllers\CheckoutController::class, 'show'])->name('order.show');
     Route::get('/don-hang/{order}/thanh-toan', [\App\Http\Controllers\PaymentController::class, 'show'])->name('payment.show');
     Route::post('/don-hang/{order}/refund', [\App\Http\Controllers\PaymentController::class, 'requestRefund'])->name('payment.refund');
