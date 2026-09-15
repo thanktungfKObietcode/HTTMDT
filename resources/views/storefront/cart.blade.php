@@ -47,7 +47,7 @@
                                 <tr>
                                     <td style="padding:12px 10px; border-top:1px solid rgba(31,28,26,0.08);">
                                         <div style="display:flex; gap:12px; align-items:center;">
-                                            <img src="{{ $product?->featured_image ?? 'https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=300&q=80' }}" alt="{{ $product?->name ?? 'Sản phẩm' }}" style="width:72px; height:72px; object-fit:cover; border-radius:12px;">
+                                            <img src="{{ \App\Support\MediaUrl::resolve($product?->featured_image) ?? 'https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=300&q=80' }}" alt="{{ $product?->name ?? 'Sản phẩm' }}" style="width:72px; height:72px; object-fit:cover; border-radius:12px;">
                                             <div>
                                                 <strong>{{ $product?->name ?? 'Sản phẩm không còn tồn tại' }}</strong><br>
                                                 <small>{{ $product?->material?->name ?? 'Bạc 925' }}</small>

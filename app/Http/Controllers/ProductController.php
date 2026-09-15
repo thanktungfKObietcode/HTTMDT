@@ -8,15 +8,32 @@ use App\Models\Material;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductReview;
+use App\Support\CategoryTree;
 use Illuminate\Http\Request;
 
 class ProductController extends Controller
 {
     public function index(Request $request)
     {
+        $activeCategories = Category::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'parent_id', 'name', 'slug']);
+        $fineJewelryRoot = $activeCategories->firstWhere('slug', 'trang-suc-vang');
+        $catalogCategoryIds = $fineJewelryRoot
+            ? CategoryTree::activeSubtreeIds($activeCategories, $fineJewelryRoot->id)
+            : [];
+        $catalogCategories = $fineJewelryRoot
+            ? $activeCategories->whereIn('id', $catalogCategoryIds)->values()
+            : $activeCategories;
+
         $query = Product::query()
             ->with(['category', 'material', 'collections', 'activeImages', 'variants'])
             ->where('is_active', true);
+
+        if ($fineJewelryRoot) {
+            $query->whereIn('category_id', $catalogCategoryIds);
+        }
 
         if ($request->filled('q')) {
             $search = trim($request->input('q'));
@@ -30,10 +47,18 @@ class ProductController extends Controller
 
         if ($request->filled('category')) {
             $categorySlug = trim($request->input('category'));
-            $query->whereHas('category', function ($builder) use ($categorySlug) {
-                $builder->where('slug', $categorySlug)
-                    ->orWhere('id', $categorySlug);
-            });
+            $selectedCategory = $catalogCategories->first(
+                fn (Category $category) => $category->slug === $categorySlug || (string) $category->id === $categorySlug
+            );
+
+            if ($selectedCategory) {
+                $query->whereIn(
+                    'category_id',
+                    CategoryTree::activeSubtreeIds($catalogCategories, $selectedCategory->id)
+                );
+            } else {
+                $query->whereRaw('1 = 0');
+            }
         }
 
         if ($request->filled('material')) {
@@ -75,7 +100,7 @@ class ProductController extends Controller
         return view('storefront.products', [
             'pageTitle' => 'Sản phẩm | Silver Atelier',
             'products' => $products,
-            'categories' => Category::where('is_active', true)->get(),
+            'categories' => $catalogCategories,
             'materials' => Material::where('is_active', true)->get(),
             'collections' => Collection::where('is_active', true)->get(),
             'selectedCategory' => $request->input('category'),
@@ -88,6 +113,15 @@ class ProductController extends Controller
 
     public function show(string $slug)
     {
+        $activeCategories = Category::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'parent_id', 'name', 'slug']);
+        $fineJewelryRoot = $activeCategories->firstWhere('slug', 'trang-suc-vang');
+        $catalogCategoryIds = $fineJewelryRoot
+            ? CategoryTree::activeSubtreeIds($activeCategories, $fineJewelryRoot->id)
+            : [];
+
         $product = Product::query()
             ->with([
                 'category',
@@ -100,6 +134,7 @@ class ProductController extends Controller
             ])
             ->where('slug', $slug)
             ->where('is_active', true)
+            ->when($fineJewelryRoot, fn ($query) => $query->whereIn('category_id', $catalogCategoryIds))
             ->firstOrFail();
 
         $product->increment('views');
@@ -139,6 +174,7 @@ class ProductController extends Controller
             'images' => $product->activeImages()->get(),
             'canReview' => $canReview,
             'existingReview' => $existingReview,
+            'categoryBreadcrumbs' => CategoryTree::activeLineage($activeCategories, $product->category_id),
         ]);
     }
 }

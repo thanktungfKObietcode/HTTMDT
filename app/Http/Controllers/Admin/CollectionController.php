@@ -62,12 +62,20 @@ class CollectionController extends Controller
 
     private function validated(Request $request, ?Collection $collection = null): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'name' => 'required|string|max:255',
             'slug' => ['required', 'string', 'max:255', Rule::unique('collections', 'slug')->ignore($collection?->id)],
             'description' => 'nullable|string',
             'image' => ['nullable', 'string', 'max:2048', new SafeContentReference],
+            'image_upload' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'is_active' => 'nullable|boolean',
         ]);
+
+        if ($request->hasFile('image_upload')) {
+            $data['image'] = $request->file('image_upload')->store('collections', 'public');
+        }
+        unset($data['image_upload']);
+
+        return $data;
     }
 }

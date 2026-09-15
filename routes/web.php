@@ -5,40 +5,25 @@ use App\Models\Category;
 use App\Models\Banner;
 use App\Models\BlogPost;
 use App\Models\Product;
+use App\Models\ProductReview;
 use App\Models\Collection;
+use App\Support\CategoryTree;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    $rootCategory = Category::where('slug', 'trang-suc-bac')->first();
-    $categories = $rootCategory
-        ? $rootCategory->children()->where('is_active', true)->get()
-        : Category::where('is_active', true)->limit(4)->get();
-
-    $featuredProducts = Product::with(['category', 'activeImages', 'variants'])
+    $activeCategories = Category::query()
         ->where('is_active', true)
-        ->where(function ($query) {
-            $query->where('featured', true)
-                ->orWhere('is_new_arrival', true)
-                ->orWhere('is_bestseller', true)
-                ->orWhere('sale_price', '>', 0);
-        })
-        ->orderBy('sort_order')
-        ->limit(4)
-        ->get();
+        ->orderBy('name')
+        ->get(['id', 'parent_id', 'name', 'slug', 'image']);
 
-    $journalPosts = BlogPost::with('category')
+    $newsPosts = BlogPost::with('category')
         ->where('is_published', true)
         ->where(fn ($query) => $query->whereNull('published_at')->orWhere('published_at', '<=', now()))
         ->where(fn ($query) => $query->whereNull('blog_category_id')->orWhereHas('category', fn ($category) => $category->where('is_active', true)))
-        ->latest()
-        ->limit(3)
+        ->orderByDesc('published_at')
+        ->orderByDesc('id')
+        ->limit(9)
         ->get();
-
-    $featuredCollection = Collection::query()
-        ->where('is_active', true)
-        ->whereHas('products', fn ($query) => $query->where('is_active', true))
-        ->latest()
-        ->first();
 
     $banners = Banner::where('is_active', true)
         ->where('position', 'home')
@@ -47,13 +32,270 @@ Route::get('/', function () {
         ->orderBy('sort_order')
         ->get();
 
+    $storyCampaign = Banner::where('is_active', true)
+        ->where('position', 'home_story')
+        ->where(fn ($query) => $query->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
+        ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>', now()))
+        ->orderBy('sort_order')
+        ->first();
+
+    $engagementVideo = Banner::where('is_active', true)
+        ->where('position', 'home_engagement_video')
+        ->where(fn ($query) => $query->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
+        ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>', now()))
+        ->orderBy('sort_order')
+        ->first();
+
+    $newArrivalsCampaign = Banner::where('is_active', true)
+        ->where('position', 'home_new_arrivals_campaign')
+        ->where(fn ($query) => $query->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
+        ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>', now()))
+        ->orderBy('sort_order')
+        ->first();
+
+    $editorialGallery = Banner::where('is_active', true)
+        ->where('position', 'home_editorial_gallery')
+        ->where(fn ($query) => $query->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
+        ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>', now()))
+        ->orderBy('sort_order')
+        ->orderBy('id')
+        ->get();
+
+    $highJewelryVideo = Banner::where('is_active', true)
+        ->where('position', 'home_high_jewelry_video')
+        ->where(fn ($query) => $query->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
+        ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>', now()))
+        ->orderBy('sort_order')
+        ->first();
+
+    $highJewelryImages = Banner::where('is_active', true)
+        ->where('position', 'home_high_jewelry_image')
+        ->where(fn ($query) => $query->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
+        ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>', now()))
+        ->orderBy('sort_order')
+        ->orderBy('id')
+        ->get();
+
+    $highJewelryCampaign = Banner::where('is_active', true)
+        ->where('position', 'home_high_jewelry_campaign')
+        ->where(fn ($query) => $query->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
+        ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>', now()))
+        ->orderBy('sort_order')
+        ->orderBy('id')
+        ->first();
+
+    $highJewelryEditorial = Banner::where('is_active', true)
+        ->where('position', 'home_high_jewelry_editorial')
+        ->where(fn ($query) => $query->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
+        ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>', now()))
+        ->orderBy('sort_order')
+        ->orderBy('id')
+        ->first();
+
+    $highJewelryCategory = $activeCategories->firstWhere('slug', 'trang-suc-kim-cuong');
+    $highJewelryProducts = $highJewelryCategory
+        ? Product::query()
+            ->with(['category', 'activeImages', 'variants'])
+            ->where('is_active', true)
+            ->whereHas('category', fn ($query) => $query->where('is_active', true))
+            ->whereIn('category_id', CategoryTree::activeSubtreeIds($activeCategories, $highJewelryCategory->id))
+            ->orderByDesc('featured')
+            ->orderByDesc('is_bestseller')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->limit(4)
+            ->get()
+        : collect();
+
+    $czEditorial = Banner::where('is_active', true)
+        ->where('position', 'home_cz_editorial')
+        ->where(fn ($query) => $query->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
+        ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>', now()))
+        ->orderBy('sort_order')
+        ->orderBy('id')
+        ->first();
+
+    $czCategory = $activeCategories->firstWhere('slug', 'trang-suc-cz');
+    $czProducts = $czCategory
+        ? Product::query()
+            ->with(['category', 'activeImages', 'variants'])
+            ->where('is_active', true)
+            ->whereHas('category', fn ($query) => $query->where('is_active', true))
+            ->whereIn('category_id', CategoryTree::activeSubtreeIds($activeCategories, $czCategory->id))
+            ->orderByDesc('featured')
+            ->orderByDesc('is_bestseller')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->limit(4)
+            ->get()
+        : collect();
+
+    $coloredGemstoneEditorial = Banner::where('is_active', true)
+        ->where('position', 'home_colored_gemstone_editorial')
+        ->where(fn ($query) => $query->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
+        ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>', now()))
+        ->orderBy('sort_order')
+        ->orderBy('id')
+        ->first();
+
+    $coloredGemstoneCategory = $activeCategories->firstWhere('slug', 'trang-suc-da-mau');
+    $coloredGemstoneProducts = $coloredGemstoneCategory
+        ? Product::query()
+            ->with(['category', 'activeImages', 'variants'])
+            ->where('is_active', true)
+            ->whereHas('category', fn ($query) => $query->where('is_active', true))
+            ->whereIn('category_id', CategoryTree::activeSubtreeIds($activeCategories, $coloredGemstoneCategory->id))
+            ->orderByDesc('featured')
+            ->orderByDesc('is_bestseller')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->limit(4)
+            ->get()
+        : collect();
+
+    $pearlEditorial = Banner::where('is_active', true)
+        ->where('position', 'home_pearl_editorial')
+        ->where(fn ($query) => $query->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
+        ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>', now()))
+        ->orderBy('sort_order')
+        ->orderBy('id')
+        ->first();
+
+    $pearlCategory = $activeCategories->firstWhere('slug', 'trang-suc-ngoc-trai');
+    $pearlProducts = $pearlCategory
+        ? Product::query()
+            ->with(['category', 'activeImages', 'variants'])
+            ->where('is_active', true)
+            ->whereHas('category', fn ($query) => $query->where('is_active', true))
+            ->whereIn('category_id', CategoryTree::activeSubtreeIds($activeCategories, $pearlCategory->id))
+            ->orderByDesc('featured')
+            ->orderByDesc('is_bestseller')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->limit(4)
+            ->get()
+        : collect();
+
+    $weddingEditorial = Banner::where('is_active', true)
+        ->where('position', 'home_wedding_editorial')
+        ->where(fn ($query) => $query->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
+        ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>', now()))
+        ->orderBy('sort_order')
+        ->orderBy('id')
+        ->first();
+
+    $weddingCollection = Collection::query()
+        ->where('slug', 'trang-suc-cuoi')
+        ->where('is_active', true)
+        ->first();
+    $weddingCarouselProducts = $weddingCollection
+        ? $weddingCollection->products()
+            ->with(['category', 'activeImages', 'variants'])
+            ->where('products.is_active', true)
+            ->whereHas('category', fn ($query) => $query->where('is_active', true))
+            ->orderByDesc('featured')
+            ->orderByDesc('is_bestseller')
+            ->orderBy('sort_order')
+            ->orderBy('products.id')
+            ->limit(8)
+            ->get()
+        : collect();
+
+    $testimonials = ProductReview::query()
+        ->with([
+            'user:id,name,avatar',
+            'product:id,is_active',
+        ])
+        ->where('is_active', true)
+        ->where('rating', '>=', 4)
+        ->whereNotNull('comment')
+        ->whereRaw("TRIM(comment) <> ''")
+        ->whereHas('user')
+        ->whereHas('product', fn ($query) => $query->where('is_active', true))
+        ->latest()
+        ->limit(3)
+        ->get();
+
+    $newArrivalProducts = Product::query()
+        ->with(['category', 'activeImages', 'variants'])
+        ->where('is_active', true)
+        ->where('is_new_arrival', true)
+        ->whereHas('category', fn ($query) => $query->where('is_active', true))
+        ->orderBy('sort_order')
+        ->latest()
+        ->limit(8)
+        ->get();
+
+    $engagementRingCategoryIds = Category::query()
+        ->where('is_active', true)
+        ->where('slug', 'nhan-kim-cuong')
+        ->pluck('id');
+
+    $engagementProducts = Product::query()
+        ->with(['category', 'activeImages', 'variants'])
+        ->where('is_active', true)
+        ->whereHas('category', fn ($query) => $query->where('is_active', true))
+        ->whereIn('category_id', $engagementRingCategoryIds)
+        ->orderByDesc('featured')
+        ->orderByDesc('is_bestseller')
+        ->orderBy('sort_order')
+        ->limit(4)
+        ->get();
+
+    if ($engagementProducts->count() < 4) {
+        $diamondRootId = Category::query()
+            ->where('is_active', true)
+            ->where('slug', 'trang-suc-kim-cuong')
+            ->value('id');
+
+        $diamondCategoryIds = Category::query()
+            ->where('is_active', true)
+            ->where(fn ($query) => $query
+                ->where('slug', 'trang-suc-kim-cuong')
+                ->when($diamondRootId !== null, fn ($query) => $query->orWhere('parent_id', $diamondRootId)))
+            ->pluck('id');
+
+        $engagementProducts = $engagementProducts->concat(
+            Product::query()
+                ->with(['category', 'activeImages', 'variants'])
+                ->where('is_active', true)
+                ->whereHas('category', fn ($query) => $query->where('is_active', true))
+                ->whereIn('category_id', $diamondCategoryIds)
+                ->where('name', 'like', '%Nhẫn%')
+                ->whereNotIn('id', $engagementProducts->pluck('id'))
+                ->orderByDesc('featured')
+                ->orderByDesc('is_bestseller')
+                ->orderBy('sort_order')
+                ->limit(4 - $engagementProducts->count())
+                ->get()
+        )->values();
+    }
+
     return view('storefront.home', [
-        'pageTitle' => 'Silver Atelier | Trang sức bạc',
-        'categories' => $categories,
-        'featuredProducts' => $featuredProducts,
-        'journalPosts' => $journalPosts,
+        'pageTitle' => 'Silver Atelier | Fine Jewelry',
+        'newsPosts' => $newsPosts,
         'banners' => $banners,
-        'featuredCollection' => $featuredCollection,
+        'storyCampaign' => $storyCampaign,
+        'engagementVideo' => $engagementVideo,
+        'engagementProducts' => $engagementProducts,
+        'newArrivalsCampaign' => $newArrivalsCampaign,
+        'newArrivalProducts' => $newArrivalProducts,
+        'editorialGallery' => $editorialGallery,
+        'highJewelryVideo' => $highJewelryVideo,
+        'highJewelryImages' => $highJewelryImages,
+        'highJewelryCampaign' => $highJewelryCampaign,
+        'highJewelryEditorial' => $highJewelryEditorial,
+        'highJewelryProducts' => $highJewelryProducts,
+        'czEditorial' => $czEditorial,
+        'czProducts' => $czProducts,
+        'coloredGemstoneEditorial' => $coloredGemstoneEditorial,
+        'coloredGemstoneProducts' => $coloredGemstoneProducts,
+        'pearlEditorial' => $pearlEditorial,
+        'pearlProducts' => $pearlProducts,
+        'weddingEditorial' => $weddingEditorial,
+        'weddingCollection' => $weddingCollection,
+        'weddingCarouselProducts' => $weddingCarouselProducts,
+        'testimonials' => $testimonials,
     ]);
 })->name('home');
 

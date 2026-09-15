@@ -16,11 +16,18 @@ class ProductContentController extends Controller
     public function storeImage(Request $request, Product $product): RedirectResponse
     {
         $data = $request->validate([
-            'image_path' => ['required', 'string', 'max:2048', new SafeContentReference],
+            'image_path' => ['nullable', 'string', 'max:2048', 'required_without:image_upload', new SafeContentReference],
+            'image_upload' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'alt_text' => 'nullable|string|max:255',
             'sort_order' => 'nullable|integer|min:0|max:4294967295',
             'is_primary' => 'nullable|boolean',
         ]);
+
+        if ($request->hasFile('image_upload')) {
+            $data['image_path'] = $request->file('image_upload')
+                ->store('products/'.$product->id.'/gallery', 'public');
+        }
+        unset($data['image_upload']);
 
         DB::transaction(function () use ($data, $product): void {
             Product::query()->whereKey($product->id)->lockForUpdate()->firstOrFail();

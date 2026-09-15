@@ -23,7 +23,7 @@
                 @forelse ($posts as $post)
                     <article class="journal-card">
                         @if ($post->featured_image)
-                            <img src="{{ $post->featured_image }}" alt="{{ $post->title }}">
+                            <img src="{{ \App\Support\MediaUrl::resolve($post->featured_image) }}" alt="{{ $post->title }}">
                         @endif
                         <div>
                             <span>{{ $post->category?->name ?? 'Tin tức' }}</span>

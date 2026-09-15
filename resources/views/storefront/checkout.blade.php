@@ -141,7 +141,7 @@
                             $variant = $entry['variant'];
                         @endphp
                         <div style="display:grid; grid-template-columns:54px 1fr auto; gap:10px; align-items:start; border-bottom:1px solid rgba(31,28,26,0.08); padding-bottom:10px;">
-                            <img src="{{ $product->featured_image }}" alt="{{ $product->name }}" style="width:54px; height:54px; object-fit:cover; border-radius:10px;">
+                            <img src="{{ \App\Support\MediaUrl::resolve($product->featured_image) }}" alt="{{ $product->name }}" style="width:54px; height:54px; object-fit:cover; border-radius:10px;">
                             <div>
                                 <strong style="font-size:14px;">{{ $product->name }}</strong>
                                 <small style="display:block; color:#666;">SKU: {{ $variant?->sku ?: $product->sku }}</small>

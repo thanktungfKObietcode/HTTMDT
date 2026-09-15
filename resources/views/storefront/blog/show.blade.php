@@ -12,7 +12,7 @@
         <div class="container" style="display:grid; grid-template-columns:minmax(0, 1fr) 280px; gap:28px; align-items:start;">
             <article class="filter-box">
                 @if ($post->featured_image)
-                    <img src="{{ $post->featured_image }}" alt="{{ $post->title }}" style="width:100%; max-height:480px; object-fit:cover; border-radius:16px; margin-bottom:24px;">
+                    <img src="{{ \App\Support\MediaUrl::resolve($post->featured_image) }}" alt="{{ $post->title }}" style="width:100%; max-height:480px; object-fit:cover; border-radius:16px; margin-bottom:24px;">
                 @endif
                 @if ($post->excerpt)<p class="product-summary">{{ $post->excerpt }}</p>@endif
                 <div style="white-space:pre-line;">{{ $post->content }}</div>

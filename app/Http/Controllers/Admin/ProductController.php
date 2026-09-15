@@ -50,10 +50,14 @@ class ProductController extends Controller
     {
         $validated = $this->validatedProduct($request);
 
-        DB::transaction(function () use ($validated, $request): void {
+        $product = DB::transaction(function () use ($validated, $request): Product {
             $product = Product::create($this->productAttributes($validated));
             $product->collections()->sync($request->input('collection_ids', []));
+
+            return $product;
         });
+
+        $this->storeFeaturedImage($request, $product);
 
         return redirect()->route('admin.products.index')->with('success', 'Sản phẩm đã được tạo.');
     }
@@ -68,6 +72,11 @@ class ProductController extends Controller
     public function update(Request $request, Product $product): RedirectResponse
     {
         $validated = $this->validatedProduct($request, $product);
+
+        if ($request->hasFile('featured_image_upload')) {
+            $validated['featured_image'] = $request->file('featured_image_upload')
+                ->store('products/'.$product->id, 'public');
+        }
 
         DB::transaction(function () use ($validated, $request, $product): void {
             $product->update($this->productAttributes($validated));
@@ -113,6 +122,7 @@ class ProductController extends Controller
             'price' => 'required|numeric|min:0',
             'sale_price' => 'nullable|numeric|min:0|lte:price',
             'featured_image' => ['nullable', 'string', 'max:2048', new SafeContentReference],
+            'featured_image_upload' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'stock' => 'required|integer|min:0',
             'featured' => 'nullable|boolean',
             'is_new_arrival' => 'nullable|boolean',
@@ -131,8 +141,20 @@ class ProductController extends Controller
         $validated['is_bestseller'] = (bool) ($validated['is_bestseller'] ?? false);
         $validated['sort_order'] = (int) ($validated['sort_order'] ?? 0);
         $validated['is_active'] = (bool) ($validated['is_active'] ?? false);
-        unset($validated['collection_ids']);
+        unset($validated['collection_ids'], $validated['featured_image_upload']);
 
         return $validated;
+    }
+
+    private function storeFeaturedImage(Request $request, Product $product): void
+    {
+        if (! $request->hasFile('featured_image_upload')) {
+            return;
+        }
+
+        $product->update([
+            'featured_image' => $request->file('featured_image_upload')
+                ->store('products/'.$product->id, 'public'),
+        ]);
     }
 }

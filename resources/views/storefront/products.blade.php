@@ -3,7 +3,7 @@
 @section('content')
     <section class="page-hero small-hero">
         <div class="container">
-            <span class="eyebrow">Trang sức bạc</span>
+            <span class="eyebrow">Fine Jewelry</span>
             <h1>Sản phẩm</h1>
         </div>
     </section>
@@ -64,7 +64,7 @@
                     @forelse ($products as $product)
                         @php
                             $imageRecord = $product->activeImages->first();
-                            $image = $imageRecord?->image_path ?? $product->featured_image ?? 'https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=900&q=80';
+                            $image = \App\Support\MediaUrl::resolve($imageRecord?->image_path ?? $product->featured_image) ?? 'https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=900&q=80';
                             $salePrice = (float) ($product->sale_price ?? 0);
                             $price = (float) ($product->price ?? 0);
                             $displayPrice = $salePrice > 0 ? $salePrice : $price;

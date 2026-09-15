@@ -30,7 +30,7 @@
                     @foreach ($items as $item)
                         @php
                             $product = $item->product;
-                            $image = $product->featured_image ?? 'https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=900&q=80';
+                            $image = \App\Support\MediaUrl::resolve($product->featured_image) ?? 'https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=900&q=80';
                             $salePrice = (float) ($product->sale_price ?? 0);
                             $price = (float) ($product->price ?? 0);
                             $displayPrice = $salePrice > 0 ? $salePrice : $price;

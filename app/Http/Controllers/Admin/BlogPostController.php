@@ -55,9 +55,14 @@ class BlogPostController extends Controller
             'excerpt' => 'nullable|string|max:2000',
             'content' => 'required|string',
             'featured_image' => ['nullable', 'string', 'max:2048', new SafeContentReference],
+            'featured_image_upload' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'is_published' => 'nullable|boolean',
             'published_at' => 'nullable|date',
         ]);
+        if ($request->hasFile('featured_image_upload')) {
+            $data['featured_image'] = $request->file('featured_image_upload')->store('blog', 'public');
+        }
+        unset($data['featured_image_upload']);
         $data['is_published'] = (bool) ($data['is_published'] ?? false);
         return $data;
     }

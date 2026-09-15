@@ -3,7 +3,7 @@
 @section('content')
     @php
         $detailImageRecord = $images->first();
-        $detailImage = $detailImageRecord?->image_path ?? $product->featured_image ?? 'https://images.unsplash.com/photo-1601821765780-3bf8f25f4d74?auto=format&fit=crop&w=900&q=80';
+        $detailImage = \App\Support\MediaUrl::resolve($detailImageRecord?->image_path ?? $product->featured_image) ?? 'https://images.unsplash.com/photo-1601821765780-3bf8f25f4d74?auto=format&fit=crop&w=900&q=80';
         $salePrice = (float) ($product->sale_price ?? 0);
         $price = (float) ($product->price ?? 0);
         $selectedVariant = $variants->firstWhere('id', (int) old('product_variant_id'))
@@ -21,6 +21,15 @@
     @endphp
 
     <section class="section-block product-detail">
+        @if ($categoryBreadcrumbs !== [])
+            <nav class="container breadcrumbs" aria-label="Điều hướng phân cấp">
+                <a href="{{ route('home') }}">Trang chủ</a>
+                @foreach ($categoryBreadcrumbs as $category)
+                    <span aria-hidden="true">/</span>
+                    <a href="{{ route('products.index', ['category' => $category->slug]) }}">{{ $category->name }}</a>
+                @endforeach
+            </nav>
+        @endif
         <div class="container product-detail-grid">
             @if ($errors->any() || session('error'))
                 <div style="grid-column:1 / -1; padding:12px 14px; border-radius:8px; background:#ffe8e8; color:#8a1f1f;">
@@ -43,7 +52,7 @@
                 </div>
                 <div class="thumb-row">
                     @forelse ($images as $image)
-                        <button type="button" class="product-thumb" data-image="{{ $image->image_path }}" data-alt="{{ $image->alt_text ?: $product->name }}" style="border:0;background:transparent;padding:0"><img src="{{ $image->image_path }}" alt="{{ $image->alt_text ?: $product->name }}"></button>
+                        <button type="button" class="product-thumb" data-image="{{ \App\Support\MediaUrl::resolve($image->image_path) }}" data-alt="{{ $image->alt_text ?: $product->name }}" style="border:0;background:transparent;padding:0"><img src="{{ \App\Support\MediaUrl::resolve($image->image_path) }}" alt="{{ $image->alt_text ?: $product->name }}"></button>
                     @empty
                         <img src="{{ $detailImage }}" alt="{{ $product->name }} thumbnail">
                         <img src="https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=600&q=80" alt="thumbnail 2">
@@ -53,7 +62,7 @@
             </div>
 
             <div class="detail-panel">
-                <span class="eyebrow">{{ $product->category->name ?? 'Trang sức bạc' }}</span>
+                <span class="eyebrow">{{ $categoryBreadcrumbs !== [] ? $categoryBreadcrumbs[count($categoryBreadcrumbs) - 1]->name : ($product->category->name ?? 'Trang sức') }}</span>
                 <h1>{{ $product->name }}</h1>
                 <div class="rating-row detail-rating">
                     <span>★★★★★</span>
@@ -299,7 +308,7 @@
         <div class="container product-grid">
             @foreach ($relatedProducts as $relatedProduct)
                 @php
-                    $relatedImage = $relatedProduct->featured_image ?? 'https://images.unsplash.com/photo-1601821765780-3bf8f25f4d74?auto=format&fit=crop&w=900&q=80';
+                    $relatedImage = \App\Support\MediaUrl::resolve($relatedProduct->featured_image) ?? 'https://images.unsplash.com/photo-1601821765780-3bf8f25f4d74?auto=format&fit=crop&w=900&q=80';
                     $relatedSalePrice = (float) ($relatedProduct->sale_price ?? 0);
                     $relatedPrice = (float) ($relatedProduct->price ?? 0);
                     $relatedDisplayPrice = $relatedSalePrice > 0 ? $relatedSalePrice : $relatedPrice;
