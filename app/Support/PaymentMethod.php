@@ -10,10 +10,12 @@ final class PaymentMethod
 
     public const VNPAY = 'vnpay';
 
+    public const MOMO = 'momo';
+
     /** @return array<int, string> */
-    public static function checkoutEnabled(bool $vnpayReady = false): array
+    public static function checkoutEnabled(bool $vnpayReady = false, bool $momoReady = false): array
     {
-        return $vnpayReady ? [self::COD, self::VNPAY] : [self::COD];
+        return array_merge([self::COD], $vnpayReady ? [self::VNPAY] : [], $momoReady ? [self::MOMO] : []);
     }
 
     /** @return array<int, string> */
@@ -25,7 +27,7 @@ final class PaymentMethod
     /** @return array<int, string> */
     public static function known(): array
     {
-        return [self::COD, self::SIMULATED_ONLINE, self::VNPAY];
+        return [self::COD, self::SIMULATED_ONLINE, self::VNPAY, self::MOMO];
     }
 
     public static function normalize(?string $method): string
@@ -40,6 +42,6 @@ final class PaymentMethod
 
     public static function isOnline(?string $method): bool
     {
-        return in_array(self::normalize($method), [self::SIMULATED_ONLINE, self::VNPAY], true);
+        return in_array(self::normalize($method), [self::SIMULATED_ONLINE, self::VNPAY, self::MOMO], true);
     }
 }

@@ -26,6 +26,8 @@ class PaymentService
 
     public const PAYMENT_METHOD_VNPAY = PaymentMethod::VNPAY;
 
+    public const PAYMENT_METHOD_MOMO = PaymentMethod::MOMO;
+
     public const PAYMENT_PENDING = 'pending';
     public const PAYMENT_PAID = 'paid';
     public const PAYMENT_FAILED = 'failed';
@@ -122,14 +124,17 @@ class PaymentService
                 return $transaction;
             }
 
+            $reference = $this->generateTransactionId();
             $transaction = $lockedOrder->paymentTransactions()->create([
                 'gateway' => $method,
-                'transaction_id' => $this->generateTransactionId(),
+                'transaction_id' => $reference,
                 'payment_status' => self::PAYMENT_PENDING,
                 'amount' => Money::fromMinorUnits(Money::toMinorUnits((string) $lockedOrder->total_amount)),
                 'currency' => VnPayAmount::CURRENCY_VND,
                 'payload' => [
                     'source' => 'order_checkout',
+                    ...($method === PaymentMethod::MOMO
+                        ? ['momo_request_id' => PaymentAttemptReference::generate()] : []),
                 ],
             ]);
             $this->closePendingAttemptsExcept(
@@ -155,7 +160,25 @@ class PaymentService
             }
         }
 
-        return PaymentMethod::checkoutEnabled($ready);
+        $momoReady = false;
+        if (config('momo.enabled') === true) {
+            try {
+                app(\App\Payments\MoMoGateway::class)->assertConfigured();
+                $momoReady = true;
+            } catch (RuntimeException) {
+                // A disabled or incomplete gateway must not make checkout unusable.
+            }
+        }
+
+        return PaymentMethod::checkoutEnabled($ready, $momoReady);
+    }
+
+    public function canInitiateMoMo(Order $order): bool
+    {
+        return $this->paymentMethod($order) === PaymentMethod::MOMO
+            && in_array($order->status, ['pending', 'confirmed'], true)
+            && $order->payment_status === self::PAYMENT_PENDING
+            && in_array(PaymentMethod::MOMO, $this->checkoutPaymentMethods(), true);
     }
 
     public function canInitiateVnPay(Order $order): bool
@@ -226,14 +249,16 @@ class PaymentService
     public function settleVerifiedEvent(VerifiedPaymentEvent $event): PaymentEventOutcome
     {
         if (! in_array($event->eventType, [VerifiedPaymentEvent::TYPE_IPN, VerifiedPaymentEvent::TYPE_QUERY], true)
-            || $event->gateway !== PaymentMethod::VNPAY
-            || $event->paid !== ($event->responseCode === '00' && $event->transactionStatus === '00')
+            || ! in_array($event->gateway, [PaymentMethod::VNPAY, PaymentMethod::MOMO], true)
+            || $event->paid !== ($event->gateway === PaymentMethod::VNPAY
+                ? ($event->responseCode === '00' && $event->transactionStatus === '00')
+                : ($event->responseCode === '0' && $event->transactionStatus === '0'))
             || ($event->paid && (ltrim($event->gatewayTransactionId, '0') === '' || $event->occurredAt === null))) {
             return PaymentEventOutcome::InvalidEvent;
         }
 
         try {
-            $outcome = $this->settleVnPayEvent($event);
+            $outcome = $this->settleGatewayEvent($event);
             if ($outcome === PaymentEventOutcome::UnknownReference) {
                 app(PaymentGatewayJournal::class)->append(
                     $event->eventType === VerifiedPaymentEvent::TYPE_QUERY ? GatewayEventType::QueryConflict : GatewayEventType::IpnConflict,
@@ -248,11 +273,11 @@ class PaymentService
                 throw $exception;
             }
 
-            return $this->settleVnPayEvent($event, true);
+            return $this->settleGatewayEvent($event, true);
         }
     }
 
-    private function settleVnPayEvent(VerifiedPaymentEvent $event, bool $identityCollision = false): PaymentEventOutcome
+    private function settleGatewayEvent(VerifiedPaymentEvent $event, bool $identityCollision = false): PaymentEventOutcome
     {
         return DB::transaction(function () use ($event, $identityCollision): PaymentEventOutcome {
             // Resolve identity only; all state decisions below use freshly locked rows.
@@ -269,56 +294,61 @@ class PaymentService
             if (! $transaction) {
                 return PaymentEventOutcome::UnknownReference;
             }
-            if ($transaction->gateway !== PaymentMethod::VNPAY || $this->paymentMethod($order) !== PaymentMethod::VNPAY
+            if ($transaction->gateway !== $event->gateway || $this->paymentMethod($order) !== $event->gateway
                 || $transaction->currency !== 'VND' || $event->currency !== 'VND') {
-                return $this->recordVnPayEvent($transaction, $event, PaymentEventOutcome::InvalidEvent);
+                return $this->recordGatewayEvent($transaction, $event, PaymentEventOutcome::InvalidEvent);
+            }
+            if ($event->gateway === PaymentMethod::MOMO
+                && ($transaction->payload['momo_request_id'] ?? null) !== ($event->metadata['request_id'] ?? null)
+                && $event->eventType === VerifiedPaymentEvent::TYPE_IPN) {
+                return $this->recordGatewayEvent($transaction, $event, PaymentEventOutcome::ReconciliationRequired);
             }
             if (! Money::equals((string) $order->total_amount, (string) $transaction->amount)
                 || ! Money::equals((string) $transaction->amount, $event->amount)
                 || Money::toMinorUnits($event->amount) <= 0) {
-                return $this->recordVnPayEvent($transaction, $event, PaymentEventOutcome::AmountMismatch);
+                return $this->recordGatewayEvent($transaction, $event, PaymentEventOutcome::AmountMismatch);
             }
 
             // Query API success does not mean payment success. Unfinished, reversal,
             // fraud/refund states must never be interpreted as safe-to-cancel failure.
-            if ($event->eventType === VerifiedPaymentEvent::TYPE_QUERY
-                && ! $event->paid && ! $event->provesUnpaid()) {
-                return $this->recordVnPayEvent($transaction, $event, PaymentEventOutcome::ReconciliationRequired);
+            if (! $event->paid && ($event->gateway === PaymentMethod::MOMO
+                || ($event->eventType === VerifiedPaymentEvent::TYPE_QUERY && ! $event->provesUnpaid()))) {
+                return $this->recordGatewayEvent($transaction, $event, PaymentEventOutcome::ReconciliationRequired);
             }
 
             $externalId = ltrim($event->gatewayTransactionId, '0') === '' ? null : $event->gatewayTransactionId;
             $externalIdUsed = $externalId !== null && PaymentTransaction::query()
-                ->where('gateway', PaymentMethod::VNPAY)->where('gateway_transaction_id', $externalId)
+                ->where('gateway', $event->gateway)->where('gateway_transaction_id', $externalId)
                 ->where('id', '<>', $transaction->id)->exists();
             if ($identityCollision || $externalIdUsed
                 || ($transaction->gateway_transaction_id !== null && $externalId !== null
                     && $transaction->gateway_transaction_id !== $externalId)) {
-                return $this->recordVnPayEvent($transaction, $event, PaymentEventOutcome::ReconciliationRequired);
+                return $this->recordGatewayEvent($transaction, $event, PaymentEventOutcome::ReconciliationRequired);
             }
             if (in_array($order->status, ['cancelled', 'refunded'], true)
                 || $order->payment_status === self::PAYMENT_REFUNDED
                 || $transactions->contains(fn ($tx) => $tx->payment_status === self::PAYMENT_REFUNDED)) {
-                return $this->recordVnPayEvent($transaction, $event, PaymentEventOutcome::ReconciliationRequired);
+                return $this->recordGatewayEvent($transaction, $event, PaymentEventOutcome::ReconciliationRequired);
             }
             if (! in_array($order->status, ['pending', 'confirmed', 'processing', 'shipped', 'delivered'], true)
                 || ! in_array($order->payment_status, [self::PAYMENT_PENDING, self::PAYMENT_FAILED, self::PAYMENT_PAID], true)) {
-                return $this->recordVnPayEvent($transaction, $event, PaymentEventOutcome::ReconciliationRequired);
+                return $this->recordGatewayEvent($transaction, $event, PaymentEventOutcome::ReconciliationRequired);
             }
             if ($transaction->payment_status === self::PAYMENT_PAID) {
                 if ($event->eventType === VerifiedPaymentEvent::TYPE_QUERY && ! $event->paid) {
-                    return $this->recordVnPayEvent($transaction, $event, PaymentEventOutcome::ReconciliationRequired);
+                    return $this->recordGatewayEvent($transaction, $event, PaymentEventOutcome::ReconciliationRequired);
                 }
-                return $this->recordVnPayEvent($transaction, $event, PaymentEventOutcome::AlreadyProcessed);
+                return $this->recordGatewayEvent($transaction, $event, PaymentEventOutcome::AlreadyProcessed);
             }
             $anotherPaid = $transactions->contains(fn ($tx) => $tx->id !== $transaction->id && $tx->payment_status === self::PAYMENT_PAID);
             if ($event->paid && ($anotherPaid || $order->payment_status === self::PAYMENT_PAID)) {
-                return $this->recordVnPayEvent($transaction, $event, PaymentEventOutcome::ReconciliationRequired);
+                return $this->recordGatewayEvent($transaction, $event, PaymentEventOutcome::ReconciliationRequired);
             }
             if (! in_array($transaction->payment_status, [self::PAYMENT_PENDING, self::PAYMENT_FAILED], true)) {
-                return $this->recordVnPayEvent($transaction, $event, PaymentEventOutcome::ReconciliationRequired);
+                return $this->recordGatewayEvent($transaction, $event, PaymentEventOutcome::ReconciliationRequired);
             }
             if (! $event->paid && $transaction->payment_status === self::PAYMENT_FAILED) {
-                return $this->recordVnPayEvent($transaction, $event, PaymentEventOutcome::AlreadyProcessed);
+                return $this->recordGatewayEvent($transaction, $event, PaymentEventOutcome::AlreadyProcessed);
             }
 
             $transaction->gateway_transaction_id ??= $externalId;
@@ -335,14 +365,14 @@ class PaymentService
                 $otherPending = $transactions->contains(fn ($tx) => $tx->id !== $transaction->id && $tx->payment_status === self::PAYMENT_PENDING);
                 $order->payment_status = $otherPending ? self::PAYMENT_PENDING : self::PAYMENT_FAILED;
             }
-            // VNPay settles payment only; fulfillment remains under OrderLifecycleService.
+            // Gateways settle payment only; fulfillment remains under OrderLifecycleService.
             $order->save();
 
-            return $this->recordVnPayEvent($transaction, $event, PaymentEventOutcome::Processed);
+            return $this->recordGatewayEvent($transaction, $event, PaymentEventOutcome::Processed);
         }, 3);
     }
 
-    private function recordVnPayEvent(PaymentTransaction $transaction, VerifiedPaymentEvent $event, PaymentEventOutcome $outcome): PaymentEventOutcome
+    private function recordGatewayEvent(PaymentTransaction $transaction, VerifiedPaymentEvent $event, PaymentEventOutcome $outcome): PaymentEventOutcome
     {
         $receipt = [
             'source' => $event->eventType,
@@ -357,8 +387,12 @@ class PaymentService
         ];
         $fingerprint = hash('sha256', json_encode($receipt, JSON_THROW_ON_ERROR));
         $payload = $transaction->payload ?? [];
-        if (! isset($payload['vnpay_events'][$fingerprint])) {
-            $payload['vnpay_events'][$fingerprint] = $receipt + [
+        $prefix = $event->gateway === PaymentMethod::VNPAY ? 'vnpay' : 'momo';
+        $eventsKey = $prefix.'_events';
+        $requiredKey = $prefix.'_reconciliation_required';
+        $reasonKey = $prefix.'_reconciliation_reason';
+        if (! isset($payload[$eventsKey][$fingerprint])) {
+            $payload[$eventsKey][$fingerprint] = $receipt + [
                 'outcome' => $outcome->value,
                 'received_at' => now()->toIso8601String(),
             ];
@@ -371,20 +405,20 @@ class PaymentService
             $uncertaintyOnly = $event->eventType === VerifiedPaymentEvent::TYPE_QUERY
                 && ! $event->paid && ! $event->provesUnpaid()
                 && $outcome === PaymentEventOutcome::ReconciliationRequired
-                && (! ($payload['vnpay_reconciliation_required'] ?? false)
-                    || ($payload['vnpay_reconciliation_reason'] ?? null) === 'query_uncertain');
-            $payload['vnpay_reconciliation_required'] = true;
-            $payload['vnpay_reconciliation_reason'] = $uncertaintyOnly ? 'query_uncertain' : 'financial_conflict';
+                && (! ($payload[$requiredKey] ?? false)
+                    || ($payload[$reasonKey] ?? null) === 'query_uncertain');
+            $payload[$requiredKey] = true;
+            $payload[$reasonKey] = $uncertaintyOnly ? 'query_uncertain' : 'financial_conflict';
             $transaction->payload = $payload;
         } elseif ($event->eventType === VerifiedPaymentEvent::TYPE_QUERY) {
             $payload = $transaction->payload ?? [];
             // A verified, consistent query may resolve transport/incomplete-state
             // uncertainty, but never silently clear historical money conflicts.
-            if (($payload['vnpay_reconciliation_reason'] ?? null) === 'query_uncertain') {
-                $payload['vnpay_reconciliation_required'] = false;
-                unset($payload['vnpay_reconciliation_reason']);
+            if (($payload[$reasonKey] ?? null) === 'query_uncertain') {
+                $payload[$requiredKey] = false;
+                unset($payload[$reasonKey]);
             }
-            $payload['vnpay_last_query_outcome'] = $outcome->value;
+            $payload[$prefix.'_last_query_outcome'] = $outcome->value;
             $transaction->payload = $payload;
         }
         if ($transaction->isDirty()) {
@@ -688,7 +722,7 @@ class PaymentService
         $preparation = DB::transaction(function () use ($refund, $actorId, $adminNote): array {
             [$order, $transaction, $refunds, $lockedRefund, $transactions] = $this->lockRefundContext($refund);
 
-            if ($transaction?->gateway === PaymentMethod::VNPAY) {
+            if (in_array($transaction?->gateway, [PaymentMethod::VNPAY, PaymentMethod::MOMO], true)) {
                 throw new RuntimeException('Hoàn tiền VNPay chưa hỗ trợ thực thi. Cần đối soát và hoàn tiền qua cổng; không thể dùng mô phỏng nội bộ.');
             }
 
@@ -725,6 +759,44 @@ class PaymentService
 
             throw new RuntimeException('Thực thi hoàn tiền thất bại.', 0, $exception);
         }
+    }
+
+    /** Reserve one approved MoMo refund; the gateway call is made after this transaction commits. */
+    /** @return array{refund: Refund, should_send: bool} */
+    public function prepareMoMoRefund(Refund $refund, int $actorId, ?string $adminNote = null): array
+    {
+        return DB::transaction(function () use ($refund, $actorId, $adminNote): array {
+            [$order, $transaction, $refunds, $locked, $transactions] = $this->lockRefundContext($refund);
+            if ($transaction?->gateway !== PaymentMethod::MOMO
+                || ! ctype_digit((string) $transaction->gateway_transaction_id)
+                || (int) $transaction->gateway_transaction_id <= 0) {
+                throw new RuntimeException('MoMo refund requires a settled gateway transaction.');
+            }
+            if (in_array($locked->status, [Refund::STATUS_PROCESSING, Refund::STATUS_COMPLETED], true)) {
+                return ['refund' => $locked, 'should_send' => false];
+            }
+            if ($locked->status !== Refund::STATUS_APPROVED) {
+                throw new RuntimeException('MoMo refund has not been approved.');
+            }
+            $this->assertRefundableContext($order, $transaction, $transactions);
+            $this->assertRefundBalanceWithinPaidAmount($transaction, $refunds);
+            $this->transitionRefund($locked, Refund::STATUS_PROCESSING);
+            $locked->processed_by = $actorId;
+            $locked->processing_at = now();
+            $locked->admin_note = $this->appendAdminNote($locked->admin_note, $adminNote);
+            $locked->save();
+            return ['refund' => $locked, 'should_send' => true];
+        }, 3);
+    }
+
+    /** Called only after MoMo confirms the exact refund identity/amount. */
+    public function completeMoMoRefund(Refund $refund, int $actorId): Refund
+    {
+        $transaction = PaymentTransaction::findOrFail($refund->payment_transaction_id);
+        if ($transaction->gateway !== PaymentMethod::MOMO) {
+            throw new RuntimeException('MoMo refund gateway mismatch.');
+        }
+        return $this->completeProcessingRefund($refund, $actorId);
     }
 
     private function completeProcessingRefund(Refund $refund, int $actorId): Refund

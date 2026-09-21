@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Payments\VnPayCancellationPending;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -19,6 +20,10 @@ final class PaymentError
     {
         // Class/category only, never getMessage(), trace, previous exception or request.
         Log::warning('Payment operation failed safely.', ['exception_type' => $exception::class]);
+        if ($exception instanceof VnPayCancellationPending) {
+            return VnPayCancellationPending::MESSAGE;
+        }
+
         return self::MESSAGE;
     }
 }

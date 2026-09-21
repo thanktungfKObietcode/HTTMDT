@@ -8,6 +8,8 @@ use App\Models\PaymentTransaction;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Refund;
+use App\Payments\ReconciliationResult;
+use App\Payments\VnPayCancellationPending;
 use App\Support\Money;
 use App\Support\PaymentMethod;
 use Illuminate\Support\Collection;
@@ -50,7 +52,9 @@ class OrderLifecycleService
             throw new RuntimeException('Trạng thái refunded chỉ được cập nhật qua refund workflow đã hoàn tất.');
         }
 
-        return $this->performTransition($order, $toStatus, $note, $changedBy);
+        $proofs = $toStatus === self::STATUS_CANCELLED ? $this->prepareVnPayCancellation($order) : null;
+
+        return $this->performTransition($order, $toStatus, $note, $changedBy, vnpayProofs: $proofs);
     }
 
     public function transitionAsCustomer(Order $order, string $toStatus, ?string $note = null, ?int $changedBy = null): Order
@@ -61,13 +65,84 @@ class OrderLifecycleService
             default => throw new RuntimeException('Khách hàng không được phép thực hiện chuyển trạng thái này.'),
         };
 
+        $proofs = $toStatus === self::STATUS_CANCELLED ? $this->prepareVnPayCancellation($order) : null;
+
         return $this->performTransition(
             $order,
             $toStatus,
             $note,
             $changedBy,
-            $allowedFromStatuses
+            $allowedFromStatuses,
+            vnpayProofs: $proofs
         );
+    }
+
+    /**
+     * The expiry worker has already queried every attempt outside its transaction.
+     * Its proofs must still pass the same locked recheck as a customer cancellation.
+     *
+     * @param array<int, ReconciliationResult> $proofs
+     */
+    public function transitionAfterVerifiedVnPayQuery(
+        Order $order,
+        array $proofs,
+        ?string $note = null,
+        ?int $changedBy = null
+    ): Order {
+        return $this->performTransition($order, self::STATUS_CANCELLED, $note, $changedBy, vnpayProofs: $proofs);
+    }
+
+    /** @return array<int, ReconciliationResult>|null */
+    private function prepareVnPayCancellation(Order $order): ?array
+    {
+        $current = Order::query()->with(['paymentTransactions' => fn ($query) => $query->orderBy('id')])
+            ->findOrFail($order->id);
+        if ($current->status === self::STATUS_CANCELLED) {
+            return null; // The locked transition remains idempotent.
+        }
+
+        $attempts = $current->paymentTransactions;
+        if ($this->paymentMethod($current) !== PaymentMethod::VNPAY) {
+            if ($attempts->contains(fn (PaymentTransaction $tx): bool => $tx->gateway === PaymentMethod::VNPAY)) {
+                throw new VnPayCancellationPending();
+            }
+
+            return null;
+        }
+        if (DB::transactionLevel() !== 0) {
+            throw new VnPayCancellationPending();
+        }
+        $maxAttempts = max(1, min(50, (int) config('vnpay.expiry_max_attempts', 20)));
+        if ($attempts->isEmpty() || $attempts->count() > $maxAttempts) {
+            throw new VnPayCancellationPending();
+        }
+        // Reject known money or durable conflicts before contacting the gateway.
+        $this->assertCancellationIsFinanciallySafe($current, $attempts, allowTransientQueryUncertainty: true);
+
+        $proofs = [];
+        foreach ($attempts as $attempt) {
+            if ($attempt->gateway !== PaymentMethod::VNPAY || $attempt->currency !== 'VND'
+                || ($attempt->requiresReconciliation()
+                    && ($attempt->payload['vnpay_reconciliation_reason'] ?? null) !== 'query_uncertain')) {
+                throw new VnPayCancellationPending();
+            }
+            try {
+                // The reconciler owns HTTP, signature verification, and financial settlement.
+                // No order or payment lock is held here.
+                $result = app(VnPayReconciliationService::class)->reconcile($attempt);
+            } catch (\Throwable) {
+                throw new VnPayCancellationPending();
+            }
+            if ($result->event?->paid === true) {
+                throw new RuntimeException('Đơn hàng đã được thanh toán qua VNPay; không thể hủy trực tiếp.');
+            }
+            if (! $result->provesUnpaid()) {
+                throw new VnPayCancellationPending();
+            }
+            $proofs[(int) $attempt->id] = $result;
+        }
+
+        return $proofs;
     }
 
     public function transitionAfterCompletedRefund(
@@ -94,7 +169,8 @@ class OrderLifecycleService
         ?string $note,
         ?int $changedBy,
         ?array $allowedFromStatuses = null,
-        bool $completedRefundTransition = false
+        bool $completedRefundTransition = false,
+        ?array $vnpayProofs = null
     ): Order {
         return DB::transaction(function () use (
             $order,
@@ -102,7 +178,8 @@ class OrderLifecycleService
             $note,
             $changedBy,
             $allowedFromStatuses,
-            $completedRefundTransition
+            $completedRefundTransition,
+            $vnpayProofs
         ): Order {
             $lockedOrder = Order::query()
                 ->whereKey($order->getKey())
@@ -136,6 +213,7 @@ class OrderLifecycleService
                 $this->assertCompletedFinancialRefund($lockedOrder, $transactions, $refunds);
             } elseif ($toStatus === self::STATUS_CANCELLED) {
                 $this->assertCancellationIsFinanciallySafe($lockedOrder, $transactions);
+                $this->assertVerifiedUnpaidVnPayAttempts($lockedOrder, $transactions, $vnpayProofs);
                 $this->closePendingPaymentAttempts($transactions);
                 $this->restoreInventory($lockedOrder);
                 $lockedOrder->payment_status = PaymentService::PAYMENT_FAILED;
@@ -197,11 +275,32 @@ class OrderLifecycleService
     }
 
     /** @param Collection<int, PaymentTransaction> $transactions */
-    private function assertCancellationIsFinanciallySafe(Order $order, Collection $transactions): void
+    private function assertCancellationIsFinanciallySafe(
+        Order $order,
+        Collection $transactions,
+        bool $allowTransientQueryUncertainty = false
+    ): void
     {
+        // No MoMo unpaid result code has been adopted as authoritative proof.
+        // Until one is verified by reconciliation, cancellation must not restore stock.
+        if ($this->paymentMethod($order) === PaymentMethod::MOMO
+            || $transactions->contains(fn (PaymentTransaction $transaction): bool => $transaction->gateway === PaymentMethod::MOMO)) {
+            throw new RuntimeException('Trạng thái thanh toán MoMo cần được đối soát trước khi có thể hủy đơn an toàn.');
+        }
         if ($transactions->contains(fn (PaymentTransaction $transaction): bool =>
-            $transaction->gateway === PaymentMethod::VNPAY && $transaction->requiresReconciliation())) {
-            throw new RuntimeException('Giao dịch VNPay cần đối soát; chưa thể hủy đơn hàng an toàn.');
+            $transaction->gateway === PaymentMethod::VNPAY && $transaction->requiresReconciliation()
+            && (! $allowTransientQueryUncertainty
+                || ($transaction->payload['vnpay_reconciliation_reason'] ?? null) !== 'query_uncertain'))) {
+            throw new VnPayCancellationPending();
+        }
+
+        if (($this->paymentMethod($order) === PaymentMethod::VNPAY && $order->paid_at !== null)
+            || $transactions->contains(fn (PaymentTransaction $transaction): bool =>
+                $transaction->gateway === PaymentMethod::VNPAY
+                && ($transaction->paid_at !== null
+                    || ($transaction->gateway_response_code === '00'
+                        && $transaction->gateway_transaction_status === '00')))) {
+            throw new RuntimeException('Đơn hàng đã thanh toán không thể hủy trực tiếp; vui lòng sử dụng quy trình hoàn tiền.');
         }
 
         if (in_array((string) $order->payment_status, [PaymentService::PAYMENT_PAID, PaymentService::PAYMENT_REFUNDED], true)
@@ -220,6 +319,39 @@ class OrderLifecycleService
                 true
             ))) {
             throw new RuntimeException('Trạng thái thanh toán không cho phép hủy đơn hàng an toàn.');
+        }
+    }
+
+    /**
+     * @param Collection<int, PaymentTransaction> $transactions
+     * @param array<int, ReconciliationResult>|null $proofs
+     */
+    private function assertVerifiedUnpaidVnPayAttempts(Order $order, Collection $transactions, ?array $proofs): void
+    {
+        $hasVnPayAttempt = $transactions->contains(
+            fn (PaymentTransaction $tx): bool => $tx->gateway === PaymentMethod::VNPAY
+        );
+        if ($this->paymentMethod($order) !== PaymentMethod::VNPAY && ! $hasVnPayAttempt) {
+            return; // Preserve COD and other non-VNPay cancellation behavior.
+        }
+        if ($this->paymentMethod($order) !== PaymentMethod::VNPAY || ! $hasVnPayAttempt
+            || $proofs === null || count($proofs) !== $transactions->count()) {
+            throw new VnPayCancellationPending();
+        }
+
+        foreach ($transactions as $attempt) {
+            $proof = $proofs[$attempt->id] ?? null;
+            $event = $proof instanceof ReconciliationResult ? $proof->event : null;
+            if (! $proof instanceof ReconciliationResult || ! $proof->provesUnpaid() || ! $event
+                || $attempt->gateway !== PaymentMethod::VNPAY || $attempt->currency !== 'VND'
+                || $attempt->payment_status !== PaymentService::PAYMENT_FAILED || $attempt->requiresReconciliation()
+                || $event->merchantReference !== $attempt->transaction_id || $event->currency !== 'VND'
+                || ! Money::equals($event->amount, (string) $attempt->amount)
+                || ! Money::equals($event->amount, (string) $order->total_amount)
+                || ($attempt->gateway_transaction_id !== null
+                    && $attempt->gateway_transaction_id !== $event->gatewayTransactionId)) {
+                throw new VnPayCancellationPending();
+            }
         }
     }
 

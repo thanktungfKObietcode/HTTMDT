@@ -12,7 +12,6 @@ use App\Models\User;
 use App\Payments\GatewayEventType;
 use App\Payments\PaymentEventOutcome;
 use App\Payments\VnPayGateway;
-use App\Services\OrderLifecycleService;
 use App\Services\PaymentGatewayJournal;
 use App\Services\PaymentService;
 use App\Services\VnPayExpiryService;
@@ -339,7 +338,7 @@ class PhaseSixCReconciliationExpiryTest extends TestCase
         match ($state) {
             'cod' => $order->update(['payment_method' => 'cod']),
             'paid' => $this->ipn($tx),
-            'cancelled' => app(OrderLifecycleService::class)->transition($order, 'cancelled'),
+            'cancelled' => $order->update(['status' => 'cancelled', 'payment_status' => 'failed']),
             'refunded' => $order->update(['status' => 'refunded', 'payment_status' => 'refunded']),
             default => null,
         };
@@ -447,6 +446,7 @@ class PhaseSixCReconciliationExpiryTest extends TestCase
     public function test_customer_cancel_then_ipn_is_audited_without_second_restore(): void
     {
         [$user, $order, $tx, $product] = $this->paymentContext();
+        $this->fakeQuery(['vnp_TransactionStatus' => '02']);
         $this->actingAs($user)->post(route('order.cancel', $order))->assertRedirect();
         $this->assertSame(PaymentEventOutcome::ReconciliationRequired, $this->ipn($tx));
         $this->assertSame('cancelled', $order->refresh()->status);

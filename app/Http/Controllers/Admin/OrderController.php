@@ -144,14 +144,13 @@ class OrderController extends Controller
         ]);
 
         try {
-            $executedRefund = $this->paymentService->executeRefund(
-                $refund,
-                (int) auth()->id(),
-                $validated['admin_note'] ?? null
-            );
+            $executedRefund = $refund->paymentTransaction?->gateway === 'momo'
+                ? app(\App\Services\MoMoRefundService::class)->execute($refund, (int) auth()->id(), $validated['admin_note'] ?? null)
+                : $this->paymentService->executeRefund($refund, (int) auth()->id(), $validated['admin_note'] ?? null);
 
             $message = $executedRefund->status === Refund::STATUS_COMPLETED
-                ? 'Hoàn tiền nội bộ đã hoàn tất.'
+                ? ($refund->paymentTransaction?->gateway === 'momo'
+                    ? 'MoMo đã xác nhận hoàn tiền.' : 'Hoàn tiền nội bộ đã hoàn tất.')
                 : 'Yêu cầu hoàn tiền đang được xử lý.';
 
             return back()->with('success', $message);

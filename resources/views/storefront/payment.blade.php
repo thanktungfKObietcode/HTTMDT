@@ -22,6 +22,8 @@
                     <strong>Ghi chú:</strong><br>
                     @if($order->payment_method === 'vnpay')
                         Thanh toán VNPay Sandbox dùng cho thử nghiệm. Trạng thái được cập nhật sau khi hệ thống nhận xác nhận thanh toán.
+                    @elseif($order->payment_method === 'momo')
+                        Thanh toán MoMo Sandbox dùng cho thử nghiệm. Chỉ thông báo máy chủ được xác minh mới cập nhật trạng thái thanh toán.
                     @else
                         Đơn COD được ghi nhận đã thanh toán khi giao hàng thành công.
                     @endif
@@ -31,6 +33,12 @@
                     <form method="POST" action="{{ route('vnpay.initiate', $order) }}">
                         @csrf
                         <button type="submit" class="btn btn-primary">Thanh toán lại bằng VNPay</button>
+                    </form>
+                @endif
+                @if($canPayMoMo)
+                    <form method="POST" action="{{ route('momo.initiate', $order) }}">
+                        @csrf
+                        <button type="submit" class="btn btn-primary">Thanh toán lại bằng MoMo</button>
                     </form>
                 @endif
 

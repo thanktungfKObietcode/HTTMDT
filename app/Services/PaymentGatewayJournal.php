@@ -21,9 +21,11 @@ final class PaymentGatewayJournal
         array $metadata = [],
         bool $conflict = false,
         ?int $orderId = null,
+        ?string $gateway = null,
     ): PaymentGatewayEvent {
         $safe = [];
-        foreach (['outcome', 'reason', 'request_id', 'actor_id', 'amount', 'currency', 'expires_at'] as $key) {
+        foreach (['outcome', 'reason', 'request_id', 'actor_id', 'amount', 'currency', 'expires_at',
+            'refund_id', 'refund_order_id', 'refund_trans_id'] as $key) {
             $value = $metadata[$key] ?? null;
             if (is_string($value) || is_int($value)) {
                 // No URL, hash, free text, arrays or PII are accepted.
@@ -38,7 +40,7 @@ final class PaymentGatewayJournal
         }
         ksort($safe);
         $fields = [
-            'gateway' => 'vnpay',
+            'gateway' => $event?->gateway ?? $transaction?->gateway ?? $gateway ?? 'vnpay',
             'event_type' => $type->value,
             'merchant_reference' => $event?->merchantReference ?? $transaction?->transaction_id,
             'gateway_transaction_id' => $event?->gatewayTransactionId ?? $transaction?->gateway_transaction_id,
@@ -58,10 +60,10 @@ final class PaymentGatewayJournal
     }
 
     /** Observations cannot settle or prevent a valid IPN from reaching settlement. */
-    public function observe(GatewayEventType $type, ?VerifiedPaymentEvent $event = null, array $metadata = []): void
+    public function observe(GatewayEventType $type, ?VerifiedPaymentEvent $event = null, array $metadata = [], ?string $gateway = null): void
     {
         try {
-            $this->append($type, event: $event, metadata: $metadata);
+            $this->append($type, event: $event, metadata: $metadata, gateway: $gateway);
         } catch (Throwable) {
             Log::warning('Gateway observation could not be recorded.', ['event_type' => $type->value]);
         }
@@ -78,10 +80,13 @@ final class PaymentGatewayJournal
                 return;
             }
             $payload = $transaction->payload ?? [];
+            $prefix = $transaction->gateway === 'momo' ? 'momo' : 'vnpay';
+            $requiredKey = $prefix.'_reconciliation_required';
+            $reasonKey = $prefix.'_reconciliation_reason';
             // Do not replace an older, stronger financial conflict with a transient one.
-            if (! ($payload['vnpay_reconciliation_required'] ?? false)) {
-                $payload['vnpay_reconciliation_required'] = true;
-                $payload['vnpay_reconciliation_reason'] = 'query_uncertain';
+            if (! ($payload[$requiredKey] ?? false)) {
+                $payload[$requiredKey] = true;
+                $payload[$reasonKey] = 'query_uncertain';
                 $transaction->payload = $payload;
                 $transaction->save();
             }

@@ -14,6 +14,7 @@ use App\Models\ProductVariant;
 use App\Models\ShippingMethod;
 use App\Services\CartService;
 use App\Services\PaymentService;
+use App\Services\MoMoPaymentService;
 use App\Services\VnPayPaymentService;
 use App\Support\PaymentMethod;
 use Illuminate\Http\RedirectResponse;
@@ -152,6 +153,12 @@ class CheckoutController extends Controller
 
                 $totalAmount = $subtotal + $shippingFee - $discountAmount;
 
+                if ($validated['payment_method'] === PaymentMethod::MOMO) {
+                    app(\App\Payments\MoMoGateway::class)->amount(
+                        \App\Support\Money::fromMinorUnits(\App\Support\Money::toMinorUnits((string) $totalAmount))
+                    );
+                }
+
                 $order = Order::create([
                     'user_id' => auth()->id(),
                     'shipping_method_id' => $shippingMethod->id,
@@ -224,6 +231,16 @@ class CheckoutController extends Controller
                 }
             }
 
+            if ($order->payment_method === PaymentMethod::MOMO) {
+                try {
+                    return redirect()->away(app(MoMoPaymentService::class)->paymentUrl($order, (int) auth()->id()));
+                } catch (\Throwable) {
+                    return redirect()->route('order.show', $order)->withErrors([
+                        'payment' => 'Đơn hàng đã được lưu. Chưa thể mở MoMo; hãy kiểm tra trạng thái trước khi thử lại.',
+                    ]);
+                }
+            }
+
             return redirect()->route('order.show', $order)->with('success', 'Đặt hàng thành công.');
         } catch (\Throwable $e) {
             $existingOrder = $this->findExistingOrder($validated['checkout_token']);
@@ -265,6 +282,7 @@ class CheckoutController extends Controller
             'order' => $order,
             'refundEligibility' => $refundEligibility,
             'canPayVnPay' => $this->paymentService->canInitiateVnPay($order),
+            'canPayMoMo' => $this->paymentService->canInitiateMoMo($order),
         ]);
     }
 

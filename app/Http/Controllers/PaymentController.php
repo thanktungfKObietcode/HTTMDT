@@ -38,6 +38,7 @@ class PaymentController extends Controller
             'order' => $order->load(['paymentTransactions' => fn ($query) => $query->latest('id')]),
             'transaction' => $transaction,
             'canPayVnPay' => $this->paymentService->canInitiateVnPay($order),
+            'canPayMoMo' => $this->paymentService->canInitiateMoMo($order),
         ]);
     }
 

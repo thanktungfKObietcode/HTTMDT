@@ -18,4 +18,7 @@ enum GatewayEventType: string
     case ExpiryCancelled = 'expiry_cancelled';
     case ExpirySkipped = 'expiry_skipped';
     case ReconciliationRequired = 'reconciliation_required';
+    case RefundRequested = 'refund_requested';
+    case RefundSettled = 'refund_settled';
+    case RefundInconclusive = 'refund_inconclusive';
 }

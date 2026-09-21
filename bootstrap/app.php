@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->validateCsrfTokens(except: ['thanh-toan/momo/ipn']);
         $middleware->replace(\Illuminate\Http\Middleware\TrustProxies::class, \App\Http\Middleware\TrustedPaymentProxies::class);
         $middleware->append(\App\Http\Middleware\PaymentSecurityHeaders::class);
         $middleware->alias([

@@ -197,6 +197,16 @@ final class PaymentDeploymentPreflight
             $this->check($checks, 'vnpay_query_configuration', $security->queryConfigured() ? 'pass' : 'fail',
                 $security->queryConfigured() ? 0 : 1, 'QueryDR requires the approved sandbox endpoint, server IP and bounded timeout.');
         }
+        if (config('momo.enabled') === true) {
+            try {
+                app(\App\Payments\MoMoGateway::class)->assertConfigured();
+                $this->check($checks, 'momo_configuration', 'pass', 0,
+                    'MoMo Sandbox configuration passed local validation; no gateway request was made.');
+            } catch (\Throwable) {
+                $this->check($checks, 'momo_configuration', 'fail', 1,
+                    'Enabled MoMo has unsafe or incomplete configuration.');
+            }
+        }
         if (config('app.env') !== 'production') {
             return; // Local HTTP, array test stores and debug do not cause production-only failures.
         }

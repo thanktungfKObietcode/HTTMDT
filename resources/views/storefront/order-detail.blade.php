@@ -72,6 +72,12 @@
                             <button type="submit" class="btn btn-primary">Thanh toán lại bằng VNPay</button>
                         </form>
                     @endif
+                    @if($canPayMoMo)
+                        <form method="POST" action="{{ route('momo.initiate', $order) }}">
+                            @csrf
+                            <button type="submit" class="btn btn-primary">Thanh toán lại bằng MoMo</button>
+                        </form>
+                    @endif
                     @unless(in_array($order->status, ['cancelled', 'refunded'], true))
                         <a href="{{ route('payment.show', $order) }}" class="btn btn-secondary">Xem payment</a>
                     @endunless

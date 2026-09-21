@@ -315,6 +315,8 @@ Route::get('/', function () {
         Route::post('/orders/{order}/status', [\App\Http\Controllers\Admin\OrderController::class, 'updateStatus'])->middleware('permission:orders.update')->name('orders.status');
         Route::post('/orders/{order}/payments/{transaction}/reconcile', \App\Http\Controllers\Admin\VnPayReconciliationController::class)
             ->middleware(['admin', 'permission:orders.update', 'throttle:payment-reconciliation'])->name('orders.payments.reconcile');
+        Route::post('/orders/{order}/payments/{transaction}/momo/reconcile', \App\Http\Controllers\Admin\MoMoReconciliationController::class)
+            ->middleware(['admin', 'permission:orders.update', 'throttle:payment-reconciliation'])->name('orders.payments.momo.reconcile');
         Route::post('/refunds/{refund}/approve', [\App\Http\Controllers\Admin\OrderController::class, 'approveRefund'])->middleware('permission:orders.refund')->name('refunds.approve');
         Route::post('/refunds/{refund}/reject', [\App\Http\Controllers\Admin\OrderController::class, 'rejectRefund'])->middleware('permission:orders.refund')->name('refunds.reject');
         Route::post('/refunds/{refund}/execute', [\App\Http\Controllers\Admin\OrderController::class, 'executeRefund'])->middleware('permission:orders.refund')->name('refunds.execute');
@@ -419,9 +421,12 @@ Route::post('/thanh-toan/callback', [\App\Http\Controllers\PaymentController::cl
 // Account
 Route::get('/thanh-toan/vnpay/return', [\App\Http\Controllers\VnPayController::class, 'returnResult'])->middleware('throttle:payment-return')->name('vnpay.return');
 Route::get('/thanh-toan/vnpay/ipn', [\App\Http\Controllers\VnPayController::class, 'ipn'])->name('vnpay.ipn');
+Route::get('/thanh-toan/momo/return', [\App\Http\Controllers\MoMoController::class, 'returnResult'])->middleware('throttle:payment-return')->name('momo.return');
+Route::post('/thanh-toan/momo/ipn', [\App\Http\Controllers\MoMoController::class, 'ipn'])->name('momo.ipn');
 
 Route::middleware(['auth', 'active'])->group(function () {
     Route::post('/don-hang/{order}/vnpay', [\App\Http\Controllers\VnPayController::class, 'initiate'])->middleware('throttle:payment-initiation')->name('vnpay.initiate');
+    Route::post('/don-hang/{order}/momo', [\App\Http\Controllers\MoMoController::class, 'initiate'])->middleware('throttle:payment-initiation')->name('momo.initiate');
     Route::get('/thanh-toan', [\App\Http\Controllers\CheckoutController::class, 'index'])->name('checkout.index');
     Route::post('/thanh-toan', [\App\Http\Controllers\CheckoutController::class, 'store'])->middleware('throttle:payment-initiation')->name('checkout.store');
     Route::get('/don-hang/{order}', [\App\Http\Controllers\CheckoutController::class, 'show'])->name('order.show');

@@ -123,6 +123,9 @@
                             @if(in_array('vnpay', $paymentMethods, true))
                                 <option value="vnpay" @selected(old('payment_method') === 'vnpay')>VNPay (Sandbox — thanh toán thử nghiệm)</option>
                             @endif
+                            @if(in_array('momo', $paymentMethods, true))
+                                <option value="momo" @selected(old('payment_method') === 'momo')>MoMo (Sandbox — thanh toán thử nghiệm)</option>
+                            @endif
                         </select>
                         @error('payment_method')<small style="color:#c62828;">{{ $message }}</small>@enderror
                     </div>

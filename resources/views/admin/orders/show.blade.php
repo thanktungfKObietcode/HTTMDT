@@ -12,7 +12,20 @@
         <section class="filter-box">
             <h2 style="margin-top:0;">Giao dịch thanh toán</h2>
             @foreach($order->paymentTransactions as $transaction)
-                <p>{{ $transaction->transaction_id }} · {{ strtoupper($transaction->payment_status) }} · {{ number_format((float) $transaction->amount, 0, ',', '.') }}đ</p>
+                <p>{{ strtoupper($transaction->gateway) }} · {{ $transaction->transaction_id }} · {{ strtoupper($transaction->payment_status) }} · {{ number_format((float) $transaction->amount, 0, ',', '.') }}đ</p>
+                @if($transaction->gateway === 'momo')
+                    <p>Mã MoMo: {{ $transaction->gateway_transaction_id ?? 'Chưa ghi nhận' }}</p>
+                    @if($transaction->requiresReconciliation())<p role="status">Cần đối soát — không tự hủy hoặc hoàn tiền.</p>@endif
+                    @if(isset($transaction->payload['momo_last_query_outcome']))
+                        <p>Kết quả đối soát gần nhất: {{ $transaction->payload['momo_last_query_outcome'] }}</p>
+                    @endif
+                    @if(auth()->user()->hasRole('admin') && auth()->user()->hasPermission('orders.update'))
+                        <form method="POST" action="{{ route('admin.orders.payments.momo.reconcile', [$order, $transaction]) }}">
+                            @csrf
+                            <button class="btn btn-secondary" type="submit">Đối soát MoMo</button>
+                        </form>
+                    @endif
+                @endif
                 @if($transaction->gateway === 'vnpay')
                     <p>Mã VNPay: {{ $transaction->gateway_transaction_id ?? 'Chưa ghi nhận' }}</p>
                     @if($transaction->requiresReconciliation())<p role="status">Cần đối soát — không tự hủy hoặc hoàn tiền.</p>@endif
@@ -52,11 +65,11 @@
                                 <button class="btn btn-secondary" type="submit">Từ chối</button>
                             </form>
                         </div>
-                    @elseif($refund->status === 'approved')
+                    @elseif($refund->status === 'approved' || ($refund->status === 'processing' && $refund->paymentTransaction?->gateway === 'momo'))
                         <form method="POST" action="{{ route('admin.refunds.execute', $refund) }}" style="display:flex; gap:8px; flex-wrap:wrap;">
                             @csrf
                             <input name="admin_note" placeholder="Ghi chú thực thi" style="padding:8px;">
-                            <button class="btn btn-primary" type="submit">Thực thi hoàn tiền</button>
+                            <button class="btn btn-primary" type="submit">{{ $refund->status === 'processing' ? 'Đối soát hoàn tiền MoMo' : 'Thực thi hoàn tiền' }}</button>
                         </form>
                     @endif
                 </div>

@@ -49,6 +49,7 @@ class PaymentTransaction extends Model
 
     public function requiresReconciliation(): bool
     {
-        return (bool) ($this->payload['vnpay_reconciliation_required'] ?? false);
+        return (bool) (($this->payload['vnpay_reconciliation_required'] ?? false)
+            || ($this->payload['momo_reconciliation_required'] ?? false));
     }
 }

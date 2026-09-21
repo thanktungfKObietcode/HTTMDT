@@ -101,7 +101,7 @@ final class VnPayExpiryService
                 }
             }
             // Reentrant same-order locks; ONLY lifecycle owns stock restoration.
-            $this->lifecycle->transition($order, OrderLifecycleService::STATUS_CANCELLED,
+            $this->lifecycle->transitionAfterVerifiedVnPayQuery($order, $proofs,
                 'VNPay hết hạn; QueryDR xác minh mọi giao dịch thất bại.');
             $this->journal->append(GatewayEventType::ExpiryCancelled,
                 metadata: ['reason' => 'verified_unpaid'], orderId: $order->id);

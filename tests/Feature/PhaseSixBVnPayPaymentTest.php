@@ -495,18 +495,18 @@ class PhaseSixBVnPayPaymentTest extends TestCase
         $this->assertSame(3, $product->refresh()->stock);
     }
 
-    public function test_real_cancellation_closes_attempt_and_late_ipn_never_restores_inventory_twice(): void
+    public function test_unverified_cancellation_is_blocked_and_later_ipn_settles_once(): void
     {
         [$user, $order, $tx, $product] = $this->orderContext();
         $query = $this->signed($tx);
-        $this->actingAs($user)->post(route('order.cancel', $order))->assertRedirect();
-        $this->assertSame('cancelled', $order->refresh()->status);
-        $this->assertSame('failed', $tx->refresh()->payment_status);
-        $this->assertSame(5, $product->refresh()->stock);
-        $this->assertIpn($query, '99', 'Reconciliation required');
-        $this->assertIpn($query, '99', 'Reconciliation required');
-        $this->assertSame(5, $product->refresh()->stock);
-        $this->assertSame('failed', $order->refresh()->payment_status);
+        $this->actingAs($user)->post(route('order.cancel', $order))->assertSessionHasErrors('status');
+        $this->assertSame('pending', $order->refresh()->status);
+        $this->assertSame('pending', $tx->refresh()->payment_status);
+        $this->assertSame(3, $product->refresh()->stock);
+        $this->assertIpn($query, '00', 'Confirm Success');
+        $this->assertIpn($query, '02', 'Order already confirmed');
+        $this->assertSame(3, $product->refresh()->stock);
+        $this->assertSame('paid', $order->refresh()->payment_status);
         $this->assertCount(1, $tx->refresh()->payload['vnpay_events']);
     }
 
