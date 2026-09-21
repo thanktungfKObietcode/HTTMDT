@@ -15,9 +15,9 @@ class VnPayGatewayTest extends TestCase
 {
     private const TEST_SECRET = 'phase-6a-test-secret-only';
 
-    public function test_vnpay_is_disabled_by_default(): void
+    public function test_vnpay_is_enabled_in_the_current_payment_configuration(): void
     {
-        $this->assertFalse((bool) config('vnpay.enabled'));
+        $this->assertTrue((bool) config('vnpay.enabled'));
         $this->assertInstanceOf(VnPayGateway::class, app(PaymentGateway::class));
     }
 

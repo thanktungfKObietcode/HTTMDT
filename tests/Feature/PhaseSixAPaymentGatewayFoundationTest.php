@@ -18,14 +18,27 @@ class PhaseSixAPaymentGatewayFoundationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_payment_method_classification_keeps_vnpay_out_of_checkout_and_callbacks(): void
+    public function test_payment_method_classification_allows_configured_vnpay_checkout_but_not_legacy_callbacks(): void
     {
+        config()->set([
+            'vnpay.enabled' => true,
+            'vnpay.tmn_code' => 'TEST1234',
+            'vnpay.hash_secret' => 'phase-6a-fixture-only',
+            'vnpay.payment_url' => 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html',
+            'vnpay.return_url' => 'https://shop.example.test/thanh-toan/vnpay/return',
+            'vnpay.ipn_url' => 'https://shop.example.test/thanh-toan/vnpay/ipn',
+            'vnpay.version' => '2.1.0',
+            'vnpay.locale' => 'vn',
+            'vnpay.currency' => 'VND',
+            'vnpay.order_type' => 'other',
+            'vnpay.timezone' => 'Asia/Ho_Chi_Minh',
+        ]);
         $service = app(PaymentService::class);
 
-        $this->assertSame([PaymentMethod::COD], $service->checkoutPaymentMethods());
+        $this->assertSame([PaymentMethod::COD, PaymentMethod::VNPAY], $service->checkoutPaymentMethods());
         $this->assertSame([PaymentMethod::SIMULATED_ONLINE], $service->callbackPaymentMethods());
         $this->assertContains(PaymentMethod::VNPAY, $service->supportedPaymentMethods());
-        $this->assertNotContains(PaymentMethod::VNPAY, $service->checkoutPaymentMethods());
+        $this->assertContains(PaymentMethod::VNPAY, $service->checkoutPaymentMethods());
         $this->assertNotContains(PaymentMethod::VNPAY, $service->callbackPaymentMethods());
         $this->assertTrue(PaymentMethod::isCod(PaymentMethod::COD));
         $this->assertTrue(PaymentMethod::isOnline(PaymentMethod::SIMULATED_ONLINE));

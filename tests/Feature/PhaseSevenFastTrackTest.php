@@ -203,14 +203,17 @@ class PhaseSevenFastTrackTest extends TestCase
             ->assertSee('name="product_variant_id"', false)->assertSee('data-stock="2"', false);
     }
 
-    public function test_homepage_surfaces_an_active_collection(): void
+    public function test_homepage_does_not_render_the_removed_legacy_collection_block(): void
     {
         $collection = Collection::create(['name' => 'Aurora', 'slug' => 'aurora', 'description' => 'Bộ sưu tập ánh sáng', 'image' => '/collections/aurora.jpg', 'is_active' => true]);
         $product = $this->product('aurora-ring', ['featured' => true]);
         $collection->products()->attach($product);
 
-        $this->get(route('home'))->assertOk()->assertSeeText('Aurora')
-            ->assertSee('/collections/aurora.jpg')->assertSee('collection=aurora');
+        $this->get(route('home'))->assertOk()
+            ->assertSeeText('A LOVE STORY THAT STAYS')
+            ->assertDontSeeText('Aurora')
+            ->assertDontSee('/collections/aurora.jpg')
+            ->assertDontSee('collection=aurora');
     }
 
     private function admin(): User

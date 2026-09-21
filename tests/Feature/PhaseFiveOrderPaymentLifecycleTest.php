@@ -520,18 +520,36 @@ class PhaseFiveOrderPaymentLifecycleTest extends TestCase
         $this->assertSame(1, $cart->items()->count());
     }
 
-    public function test_checkout_keeps_vnpay_disabled_until_payment_initiation_is_implemented(): void
+    public function test_checkout_creates_a_pending_vnpay_attempt_and_redirects_to_the_sandbox(): void
     {
         [$customer, $shipping, $product, $cart] = $this->createCheckoutContext();
+        config()->set([
+            'vnpay.enabled' => true,
+            'vnpay.tmn_code' => 'TEST1234',
+            'vnpay.hash_secret' => 'phase-5-fixture-only',
+            'vnpay.payment_url' => 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html',
+            'vnpay.return_url' => 'https://shop.example.test/thanh-toan/vnpay/return',
+            'vnpay.ipn_url' => 'https://shop.example.test/thanh-toan/vnpay/ipn',
+            'vnpay.version' => '2.1.0',
+            'vnpay.locale' => 'vn',
+            'vnpay.currency' => 'VND',
+            'vnpay.order_type' => 'other',
+            'vnpay.timezone' => 'Asia/Ho_Chi_Minh',
+        ]);
 
-        $this->actingAs($customer)
-            ->post(route('checkout.store'), $this->checkoutPayload($shipping->id, PaymentService::PAYMENT_METHOD_VNPAY))
-            ->assertSessionHasErrors('payment_method');
+        $response = $this->actingAs($customer)
+            ->post(route('checkout.store'), $this->checkoutPayload($shipping->id, PaymentService::PAYMENT_METHOD_VNPAY));
+        $response->assertRedirect();
 
-        $this->assertSame(0, Order::query()->count());
-        $this->assertSame(0, PaymentTransaction::query()->count());
-        $this->assertSame(5, (int) $product->refresh()->stock);
-        $this->assertSame(1, $cart->items()->count());
+        $order = Order::query()->sole();
+        $transaction = PaymentTransaction::query()->sole();
+        $this->assertSame(PaymentService::PAYMENT_METHOD_VNPAY, $order->payment_method);
+        $this->assertSame(PaymentService::PAYMENT_PENDING, $order->payment_status);
+        $this->assertSame(PaymentService::PAYMENT_METHOD_VNPAY, $transaction->gateway);
+        $this->assertSame(PaymentService::PAYMENT_PENDING, $transaction->payment_status);
+        $this->assertSame('sandbox.vnpayment.vn', parse_url((string) $response->headers->get('Location'), PHP_URL_HOST));
+        $this->assertSame(3, (int) $product->refresh()->stock);
+        $this->assertSame(0, $cart->items()->count());
     }
 
     private function createAdmin(): User
